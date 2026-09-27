@@ -13,11 +13,12 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # harness-bootstrap.sh) and the GitHub CLI. git/tar are required by Hermes's and
 # OpenCode's install scripts respectively (see per-tool notes below).
 #
+# DL3008 (pin apt versions) is ignored below: Debian package versions are deliberately unpinned.
+# These are working defaults a swarm owner replaces for their own build (see
+# configuration-docs/building-the-images.md); pinning them here would break the build every time
+# Debian moves a point release, with no benefit to a project whose purpose is to be rebuilt
+# downstream. The directive must be the last comment line before the instruction to take effect.
 # hadolint ignore=DL3008
-#   Debian package versions are deliberately unpinned. These are working defaults a swarm owner
-#   replaces for their own build (see configuration-docs/building-the-images.md); pinning them here
-#   would break the build every time Debian moves a point release, with no benefit to a project whose
-#   whole purpose is to be rebuilt downstream.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git tar \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \

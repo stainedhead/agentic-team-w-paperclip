@@ -16,8 +16,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # openssl is used by entrypoint.sh to generate BETTER_AUTH_SECRET / PAPERCLIP_TOOL_ACTION_SIGNING_SECRET
 # on first boot if the swarm owner didn't supply them — not guaranteed present on the slim base.
 #
+# Unpinned deliberately, for the same reason as the base image's apt-get step. The ignore directive
+# must be the last comment line before the instruction to take effect.
 # hadolint ignore=DL3008
-#   Unpinned deliberately, for the same reason as the base image's apt-get step.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 
