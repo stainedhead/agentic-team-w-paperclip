@@ -18,7 +18,10 @@ locally or in AWS. See [INTENT.md](INTENT.md) for why; `documentation/` for what
 - `documentation/architectual-decisions-record.md` — append-only architectural decision log (ADRs).
 - `configuration-docs/` — how a swarm owner configures and deploys the platform (e.g. credentials/secrets setup).
 - `user-docs/` — how a developer uses the deployed agent fleet day to day.
-- `*-PRD.md` (e.g. `agentic-team-w-paperclip-PRD.md`) — the current product requirements document(s), at repo root.
+- `specs/YYMMDD-<feature-name>/` — an active feature spec, following the dev-flow progressive
+  documentation workflow (`spec.md`, `status.md`, `research.md`, etc.); the source PRD for that
+  feature lives inside its spec directory once `/create-spec` has run, not at repo root.
+  `specs/archive/` holds completed specs.
 
 ## Keeping documentation current
 The files above are the primary context agents use to understand this product — keep them
@@ -31,7 +34,7 @@ from elsewhere rather than restating it):
 | A decision made among alternatives | new ADR entry (append-only — supersede old entries, never edit them in place) |
 | Product scope or feature change | `product-details.md` (touch `product-summary.md` only if the elevator pitch itself changes) |
 | Goal/direction/scope shift | `INTENT.md` |
-| New/changed requirement before it's built | the relevant `*-PRD.md` |
+| New/changed requirement before it's built | the active spec's PRD, or a new `*-PRD.md` at repo root if no spec exists yet for it |
 | How a swarm owner configures/deploys the platform | `configuration-docs/` |
 | How a developer uses the deployed fleet | `user-docs/` |
 | Anything a newcomer needs to get oriented | `README.md` |

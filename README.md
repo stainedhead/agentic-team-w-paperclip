@@ -15,10 +15,11 @@ coordinated by an orchestration/collaboration layer — that runs either locally
 - [configuration-docs/](configuration-docs/) — how a swarm owner configures and deploys the
   platform (e.g. [credentials-and-secrets.md](configuration-docs/credentials-and-secrets.md)).
 - [user-docs/](user-docs/) — how a developer uses the deployed agent fleet day to day.
-- [agentic-team-w-paperclip-PRD.md](agentic-team-w-paperclip-PRD.md) — the current product
-  requirements document.
+- [specs/260927-agentic-team-w-paperclip/](specs/260927-agentic-team-w-paperclip/) — the active
+  feature spec (and source PRD) for the first build of this platform.
 - [initial-context.md](initial-context.md) — the original AWS architecture draft this project
   started from. Frozen; superseded by `documentation/technical-architecture.md` where they differ.
 
 ## Status
-Documentation/design only — no build, lint, or test tooling exists yet.
+In active development — see the spec above for current scope. No build, lint, or test tooling
+exists in the repo yet.
