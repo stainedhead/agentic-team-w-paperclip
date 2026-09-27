@@ -37,7 +37,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # prerequisite (installed above). --non-interactive skips setup/gateway prompts, needed for a
 # non-interactive Docker build. This is a default the swarm owner can replace (e.g. to pin a
 # specific Hermes version) for their own build.
-RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive
+#
+# The installer collapses child-process output behind a status line and reports only a one-line
+# reason on failure (e.g. "✗ pm install failed"), writing the actual error to
+# $HERMES_HOME/logs/install.log. Downloading to a file and dumping that log on failure is what makes
+# a broken build diagnosable instead of opaque — the `exit 1` keeps the build failing.
+RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/hermes-install.sh \
+    && { bash /tmp/hermes-install.sh --non-interactive \
+         || { echo "=== hermes installer failed; ${HOME:-/root}/.hermes/logs/install.log follows ==="; \
+              cat "${HOME:-/root}/.hermes/logs/install.log" 2>/dev/null || echo "(no install log written)"; \
+              exit 1; }; } \
+    && rm -f /tmp/hermes-install.sh
 
 # --- OMP (oh-my-pi) -------------------------------------------------------------------------
 # Verified 2026-09-27 against the actual install script. Self-contained; only needs curl (already
