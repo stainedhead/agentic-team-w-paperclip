@@ -13,18 +13,20 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # harness-bootstrap.sh) and the GitHub CLI. git/tar are required by Hermes's and
 # OpenCode's install scripts respectively (see per-tool notes below).
 #
-# DL3008 (pin apt versions) is ignored below: Debian package versions are deliberately unpinned.
-# These are working defaults a swarm owner replaces for their own build (see
-# configuration-docs/building-the-images.md); pinning them here would break the build every time
-# Debian moves a point release, with no benefit to a project whose purpose is to be rebuilt
-# downstream. The directive must be the last comment line before the instruction to take effect.
-# hadolint ignore=DL3008
-#
-# libatomic1 is required by the Node.js toolchain that Hermes's own package manager downloads.
-# Without it the install fails part way through with
+# libatomic1 is required by the Node.js toolchain that Hermes's own package manager downloads. It is
+# not present in debian:bookworm-slim, and without it the install fails part way through with
 #   ✗ node: staged entry failed verification: … libatomic.so.1: cannot open shared object file
 # followed by an unexplained "✗ pm install failed" — confirmed by CI's smoke-build job on the first
-# real build of this image. It is not present in debian:bookworm-slim.
+# real build of this image.
+#
+# DL3008 (pin apt versions) is ignored: Debian package versions are deliberately unpinned. These are
+# working defaults a swarm owner replaces for their own build (see
+# configuration-docs/building-the-images.md); pinning them here would break the build every time
+# Debian moves a point release, with no benefit to a project whose purpose is to be rebuilt
+# downstream.
+#
+# Keep the directive below as the LAST comment line before the RUN — hadolint ignores it otherwise.
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git tar libatomic1 \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
