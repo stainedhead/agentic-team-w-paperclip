@@ -10,7 +10,7 @@
 | 1 | Research | Complete |
 | 2 | Data Modeling | In Progress |
 | 3 | Architecture | In Progress |
-| 4 | Implementation | Not Started |
+| 4 | Implementation | In Progress |
 | 5 | Tests | Not Started |
 
 ## Phase 0 Task Checklist
@@ -44,11 +44,29 @@
 - [ ] FR-016's base-image-layering decision still needs recording in
       `documentation/architectual-decisions-record.md`
 
+## Phase 4 (Implementation) Task Checklist
+
+- [x] `images/harness/Dockerfile`, `harness-bootstrap.sh`, `entrypoint.sh`,
+      `instance.default.yaml`
+- [x] `images/paperclip/Dockerfile`, `entrypoint.sh` (FROM harness image)
+- [x] `.github/workflows/build-and-publish.yml` (build both images, publish to GHCR, release job)
+- [x] `configuration-docs/github-cli-and-pat.md` (FR-033)
+- [x] `configuration-docs/credentials-and-secrets.md` extended with concrete env var / Secrets
+      Manager path convention
+- [x] `configuration-docs/deploy-macos-container.md`, `deploy-ecs-fargate.md`, `deploy-eks.md`
+      (FR-032) — macOS persistent-storage open question resolved
+- [ ] Confirm exact install commands for Hermes and OMP (Dockerfile RUN lines are commented
+      placeholders pending this — see implementation-notes.md)
+- [ ] Confirm Paperclip's own install/self-host method
+- [ ] `documentation/architectual-decisions-record.md` — FR-016's base-image-layering decision
+      still not recorded there
+- [ ] `user-docs/` guides — deferred to Step 4 of the dev-flow pipeline
+
 ## Blockers
 
-None currently. Three remaining open items (AWS Secrets Manager path convention, macOS
-`Container` persistent-storage recipe, OMP install verification) are implementation-detail
-research, not architecture-blocking.
+None currently. Three tool-install commands (Hermes, OMP, Paperclip) are documented as
+swarm-owner-editable defaults rather than hard-verified — not a blocker per explicit user
+direction, but worth confirming when the background research agent reports back.
 
 ## Recent Activity
 
@@ -62,3 +80,10 @@ research, not architecture-blocking.
   of Hermes, OMP, OpenCode CLI, and Paperclip; resolved most of the technical-approach and
   component-coverage gaps as a result. Corrected the GitHub Projects vs. Issues assumption and
   narrowed FR-033's deliverable accordingly.
+- 2026-09-27: Brought the PRD (inside this spec directory) to parity with spec.md's refinements.
+- 2026-09-27: Step 3 (Implement Product) started — Dockerfiles, entrypoint/bootstrap scripts,
+  CI/CD workflow, and configuration-docs (credentials, GitHub PAT, deployment examples for all
+  three targets) written. Resolved the AWS Secrets Manager path convention and macOS
+  persistent-storage recipe open questions. Exact install commands for Hermes/OMP/Paperclip left
+  as swarm-owner-editable Dockerfile defaults per explicit user direction, pending confirmation
+  from a background research agent.
