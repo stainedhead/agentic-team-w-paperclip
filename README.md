@@ -22,13 +22,19 @@ locally (macOS `Container`) or in AWS (ECS Fargate, EKS).
   - [product-details.md](documentation/product-details.md)
   - [technical-architecture.md](documentation/technical-architecture.md)
   - [architectual-decisions-record.md](documentation/architectual-decisions-record.md)
-- [specs/archive/260927-agentic-team-w-paperclip/](specs/archive/260927-agentic-team-w-paperclip/) — the active
-  feature spec (and source PRD) for this build.
+- [specs/archive/](specs/archive/) — completed feature specs (and their source PRDs), most
+  recently [260927-agentic-team-w-paperclip/](specs/archive/260927-agentic-team-w-paperclip/)
+  (the first build) and
+  [260927-agentic-team-w-paperclip-auto-review/](specs/archive/260927-agentic-team-w-paperclip-auto-review/)
+  (its code-review fix pass). No spec is currently active.
 - [initial-context.md](initial-context.md) — the original AWS architecture draft this project
   started from. Frozen; superseded by `documentation/technical-architecture.md` where they differ.
 
 ## Status
-First feature in progress — both container images, CI/CD, and configuration docs are written;
-see [DEV-FLOW-STATUS.md](DEV-FLOW-STATUS.md) for build progress. Not yet independently verified
-with a real `docker build` (no Docker daemon available during initial implementation) — see
-`specs/archive/260927-agentic-team-w-paperclip/status.md` for open items.
+Both container images build (Dockerfiles, entrypoints) and CI/CD (build, multi-arch, publish to
+GHCR, lint, release) are implemented, including fixes from a code-review pass — see
+[DEV-FLOW-STATUS.md](DEV-FLOW-STATUS.md) for the full build history. **Not yet verified with a
+real `docker build`/`docker run`** — no Docker daemon was available in the environment this was
+built in, so all fixes were checked via static analysis (bash reproduction, manual trace-through,
+syntax checks) rather than an actual build. That real build/run pass is the next thing this
+project needs before the images can be trusted.

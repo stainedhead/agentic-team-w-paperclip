@@ -7,8 +7,10 @@
 Sections 1-6 below are the original target enterprise design (Okta SSO, Aurora Serverless,
 ALB/API Gateway ingress, Cloud Map service discovery) — design intent, still **not built**.
 Section 0 describes what has actually been built so far, from
-`specs/archive/260927-agentic-team-w-paperclip/`: two container images, CI/CD to GHCR, and configuration
-documentation. Where they conflict, Section 0 is what's real today.
+`specs/archive/260927-agentic-team-w-paperclip/` and its code-review fix pass in
+`specs/archive/260927-agentic-team-w-paperclip-auto-review/`: two container images, CI/CD to
+GHCR, and configuration documentation. Where they conflict, Section 0 is what's real today. None
+of it has been verified with a real `docker build`/`run` yet (see README.md's Status section).
 
 ## 0. What's actually built (first shipped feature)
 
@@ -16,8 +18,12 @@ documentation. Where they conflict, Section 0 is what's real today.
   installs Hermes (Nous Research Hermes Agent), OMP (oh-my-pi), and OpenCode CLI via each tool's
   own verified install script, and runs Hermes on startup; the harness+Paperclip image is built
   `FROM` the harness image (see ADR-0006) and runs both Hermes and Paperclip.
-- **CI/CD** (`.github/workflows/build-and-publish.yml`) builds both images and publishes to GHCR,
-  pinning the harness+Paperclip image's base by digest; cuts a GitHub Release on a tag push.
+- **CI/CD** (`.github/workflows/build-and-publish.yml`) lints (shellcheck, hadolint), then builds
+  both images for `linux/amd64` and `linux/arm64` and publishes to GHCR, pinning the
+  harness+Paperclip image's base by digest; reacts to a published GitHub Release by tagging
+  images with its semver.
+- **Both images run as a non-root user** (UID/GID 1000:1000), not root, though this hasn't been
+  verified with a real `docker build`/`run` — see the Status note above.
 - **This product's own configuration surface**: a single `/data/instance.yaml` file per instance
   (persona assignment, model-host selection, credential references — see ADR-0008), bootstrapped
   from a default template on first start and reused thereafter, on a persistent-storage volume
