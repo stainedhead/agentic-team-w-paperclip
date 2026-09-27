@@ -22,6 +22,50 @@ Additional P1/P2 findings cover a missing multi-arch build (contradicting the ma
 Apple Silicon / AWS Graviton targets), containers running fully as root, CI trigger duplication,
 and unverified `hermes cron create` idempotency.
 
+## Goals
+
+- Fix both P0 bugs so the containers reach a running state under their own shipped defaults.
+- Add CI-level linting (shellcheck, a Dockerfile linter) so this class of bug is caught before
+  merge in the future, not just found in a manual review.
+- Close the P1/P2 gaps (multi-arch build, non-root user, CI trigger duplication, cron
+  idempotency) where reasonably scoped to do so in this fix pass.
+
+## Non-Goals
+
+- Redesigning the instance-config schema, the poll mechanism, or any other decision already made
+  in `specs/260927-agentic-team-w-paperclip/architecture.md` — this pass fixes bugs in the
+  existing design, it doesn't re-litigate the design.
+- Confirming Paperclip's own install/self-host method beyond "something that actually runs" —
+  the exact command remains a swarm-owner-editable default per prior direction; FR-002 only
+  requires that *some* working install + loud-failure-on-crash exists, not the final answer.
+- Running an actual `docker build`/`docker run` in this environment (no Docker daemon available)
+  — fixes should be verified as thoroughly as static analysis (shellcheck, manual trace-through)
+  allows, with a real build/run flagged as still owed (see Open Questions).
+
+## Non-Functional Requirements
+
+- **Reliability**: a container must reach a running state using its own shipped default
+  configuration — this is the core reliability bar both P0 findings currently violate.
+- **Security**: FR-004 (non-root execution) is this pass's security requirement — consistent
+  with `documentation/architectual-decisions-record.md` ADR-0002's blast-radius reasoning.
+- **Observability**: failures (like FR-002's silently-dead Paperclip process) must be visible in
+  container logs/exit status, not swallowed.
+
+## Process Guidance for Implementing Fixes
+
+- **TDD (Red → Green → Refactor)** for every fix: write a failing check first (e.g. a shellcheck
+  rule, a scripted assertion that the bootstrap logic doesn't exit on empty optional fields, a
+  smoke-test script that greps for both PIDs), confirm it fails against the current code, then
+  fix, then confirm it passes.
+- **A brief code/design review after each individual fix**, before moving to the next — don't
+  batch all seven findings into one unreviewed change.
+- **Fix P0 first, then P1, then P2** — do not start P1/P2 work before both P0 bugs are fixed and
+  verified.
+- **Agent teammates / git worktrees**: FR-001–FR-002 (bash logic) and FR-003–FR-004 (Dockerfile/CI
+  changes) touch disjoint files and can be parallelized across worktrees/teammates if useful; FR-005
+  (CI linting) should land after FR-001/FR-002 are fixed, so the new lint job has real fixed code
+  to validate against, not a rule written around still-broken scripts.
+
 ## Findings
 
 **FR-001 (P0):** `images/harness/harness-bootstrap.sh` shall not exit the entrypoint process when
@@ -120,6 +164,28 @@ confirmed.
     multiple restarts) whether duplicate `cron create` calls are deduplicated.
   - [ ] If not, guard the call (e.g. check `jobs.json` for an existing matching entry before
     creating another).
+
+## Dependencies and Risks
+
+| Item | Type | Notes |
+|------|------|-------|
+| `shellcheck` | Dependency | Needed for FR-005; confirm availability on `ubuntu-latest` GitHub-hosted runners (it ships preinstalled, but pin/verify the version). |
+| `hadolint` | Dependency | Needed for FR-005; not preinstalled on `ubuntu-latest` — will need its own setup step or a container-based action. |
+| QEMU / Buildx multi-platform support | Dependency | Needed for FR-003; `docker/setup-qemu-action` alongside the existing `docker/setup-buildx-action`. |
+| No Docker daemon in this environment | Risk | Fixes for FR-001/FR-002 can be verified via static reasoning (shellcheck, manual trace-through) but not an actual `docker build`/`run` here — real verification is still owed once a daemon is available (see Open Questions). |
+| Paperclip's real install method still unknown | Risk | FR-002's acceptance criteria only require *a* working install, not the confirmed-correct one — a future pass should still nail this down. |
+
+## Open Questions
+
+- **Is a real `docker build`/`docker run` test happening before this fix pass is considered
+  done?** No Docker daemon was available during the original implementation or this review — if
+  one becomes available, fixes here should be re-verified end-to-end, not just via static
+  analysis.
+- **`hadolint` availability**: does the CI runner need an explicit install step, or should
+  `hadolint`'s own Docker-based GitHub Action be used instead? Affects how FR-005 is implemented.
+- **Paperclip's actual install/self-host command**: still unconfirmed (see
+  `specs/260927-agentic-team-w-paperclip/research.md`'s Open Questions) — FR-002 works around
+  this by requiring *a* default plus loud failure, not the confirmed-correct command.
 
 ## Notes
 
