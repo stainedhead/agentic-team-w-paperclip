@@ -168,28 +168,48 @@ Two image variants are published:
 | Container images (Dockerfiles, entrypoints, config bootstrap) | Implemented |
 | CI/CD — lint, smoke build, multi-arch publish to GHCR, release tagging | Implemented |
 | Configuration and user documentation, templates | Implemented |
-| **Verified by a real `docker build` / `docker run`** | **Not yet** — see below |
+| **Harness image — builds and runs** | ✅ **Verified in CI** |
+| **Harness+Paperclip image — builds and runs** | In progress — see below |
 
-The images have never been built by a Docker daemon. They were written and reviewed statically,
-because no daemon was available in the environment they were authored in. The CI workflow now
-includes a **`smoke-build` job** that builds both images single-arch, runs them, and asserts that
-the container comes up as uid 1000, that every tool is on `PATH` after the non-root privilege drop,
-and that the `instance.yaml` bootstrap writes its files — so the first CI run is what will confirm
-or refute this. Treat the images as unverified until that job has passed once.
+The images were originally written and reviewed *statically*, with no Docker daemon available. CI now
+has a **`smoke-build` job** that builds both images single-arch, runs them, and asserts what static
+reading cannot. Running it for real found four defects that review had missed, which is the honest
+argument for having it.
 
-What `smoke-build` does **not** cover: it runs with no volume mounted, so it exercises the image's
-own `/data` directory rather than a real bind mount, PVC or EFS access point. Whether *your* volume
-is writable by uid 1000 is the most common real deployment failure and only your deployment can
-prove it — each `configuration-docs/deploy-*.md` says what to set.
+**Confirmed working** — actual output from the harness image:
 
-Two things that job is specifically expected to settle:
-- whether each installer's binaries remain reachable after the image drops to the `agent` user;
-- whether Paperclip's installer brings its own Node.js (the entrypoint invokes it as
-  `npx paperclipai`, and upstream does not document this).
+```
+whoami=agent uid=1000 HOME=/home/agent
+ok: hermes   -> /home/agent/.local/bin/hermes
+ok: omp      -> /home/agent/.local/bin/omp
+ok: opencode -> /home/agent/.opencode/bin/opencode
+ok: yq       -> /usr/local/bin/yq
+ok: gh       -> /usr/bin/gh
+ok: git      -> /usr/bin/git
+ok: bootstrapped /data/instance.yaml
+ok: wrote /home/agent/.hermes/.env
+```
 
-Also unverified against upstream docs: the literal `hermes gateway run --foreground` invocation
-used as PID 1, and `hermes cron create`'s own de-duplication behavior (the bootstrap guards
-against duplicates itself rather than relying on it).
+So for the harness image: it builds, runs as the non-root user, every tool survives the privilege
+drop, and the `instance.yaml` bootstrap works. What the build taught us:
+
+- `libatomic1` was missing — Hermes's package manager downloads a Node.js toolchain that links
+  `libatomic.so.1`, and the installer reported only `✗ pm install failed`.
+- Paperclip does not bundle Node.js, and its `install.sh` cannot run non-interactively at all (it
+  passes a `--no-prompt` flag the published package rejects). Node 22 and the `paperclipai` package
+  are now installed directly — see ADR-0015.
+
+What `smoke-build` **does not** cover:
+
+- **Volume permissions.** It runs with no volume mounted, exercising the image's own `/data` rather
+  than a real bind mount, PVC or EFS access point. Whether *your* volume is writable by uid 1000 is
+  the most common real deployment failure, and only your deployment can prove it — each
+  `configuration-docs/deploy-*.md` says what to set.
+- **The entrypoints themselves.** It sources the bootstrap rather than running the entrypoint, which
+  would block on the Hermes gateway. So `hermes gateway run --foreground` as the container's main
+  process remains the main unverified runtime assumption, along with `hermes cron create`'s own
+  de-duplication behavior (the bootstrap guards against duplicates itself rather than relying on it).
+- **`linux/arm64`.** Smoke-build is amd64 only; the arm64 leg is built under QEMU in the publish job.
 
 ## Licensing
 

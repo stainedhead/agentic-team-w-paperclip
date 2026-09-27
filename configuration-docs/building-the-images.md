@@ -97,17 +97,33 @@ Multi-arch builds under QEMU are slow — each installer bootstraps its own runt
 The workflow uses GitHub Actions cache (`cache-from`/`cache-to: type=gha`) to keep that tolerable;
 keep it if you fork.
 
-## Known unverified points
+## Things the build taught us (and might bite your own build)
 
-These are honest gaps, not oversights, and the `smoke-build` job exists to close the first two:
+Each of these was found by actually building, not by reading:
 
-- **Whether Paperclip's installer brings its own Node.js.** The entrypoint invokes Paperclip as
-  `npx paperclipai <verb>` and fails fast with a clear message if `npx` is missing; upstream does not
-  document this. If the smoke test fails on it, add Node.js to `images/paperclip/Dockerfile`.
-- **Whether each installer's binaries remain on `PATH` after the privilege drop.** The installers run
-  as root; the image adds `/home/agent/.local/bin`, `/home/agent/.opencode/bin` and
-  `/root/.local/bin` to `PATH` and copies root's dotfiles across to cover the likely locations.
+- **`libatomic1` is required.** Hermes's package manager downloads its own Node.js toolchain, which
+  links `libatomic.so.1` — absent from `debian:bookworm-slim`. Without it the install dies with
+  `✗ pm install failed` and no further explanation. If you change base image, keep this in mind.
+- **The Hermes installer hides its errors.** It collapses child output behind a status line and
+  reports a one-line reason. The Dockerfile downloads the script and dumps
+  `$HERMES_HOME/logs/install.log` on failure so a broken build is diagnosable. Keep that if you edit
+  the step.
+- **Paperclip needs Node.js and does not bundle it**, and `https://paperclip.ing/install.sh` cannot
+  run in a build at all: it sets `NO_PROMPT=1` when there is no TTY and then passes `--no-prompt` to
+  the `paperclipai` package, which rejects it. The image installs Node (NodeSource, `ARG NODE_MAJOR`)
+  and `npm install -g paperclipai@latest` directly instead — see ADR-0015. If you would rather track
+  upstream's script, check whether that flag incompatibility has been fixed first.
+- **Tool binaries land in more than one place.** `hermes` and `omp` resolve under
+  `/home/agent/.local/bin`, `opencode` under `/home/agent/.opencode/bin`. The image puts both on
+  `PATH` (plus `/root/.local/bin`, where the installers ran) and copies root's dotfiles across.
+
+## Still unverified
+
 - **The literal `hermes gateway run --foreground` invocation.** Research confirmed `hermes gateway
   install` sets up a *service*; the foreground form used here as the container's main process was not
-  confirmed against upstream docs. Verify against
+  confirmed against upstream docs, and `smoke-build` deliberately does not exercise it (running the
+  entrypoint would block). Verify against
   [Hermes's own documentation](https://github.com/nousresearch/hermes-agent) before relying on it.
+- **Volume permissions.** `smoke-build` runs without a mounted volume, so it does not prove your bind
+  mount, PVC or EFS access point is writable by uid 1000.
+- **`linux/arm64`.** Only the publish job builds it, under QEMU; the smoke test is amd64 only.

@@ -13,7 +13,7 @@ a past entry in place.
 |---|---|---|
 | 0001–0005 | ECS/Graviton fleet, IAM+EFS isolation, Okta ingress, Aurora state, CDK factory | Target design — **not built here** |
 | 0006–0009 | Image lineage, work-poll mechanism, `instance.yaml`, secret paths | What is built |
-| 0010–0014 | Scope boundary, config resolution, build context, process supervision, poll schedule | What is built |
+| 0010–0015 | Scope boundary, config resolution, build context, process supervision, poll schedule, Node/Paperclip install | What is built |
 
 ## ADR-0001: Deploy the worker fleet as long-running ECS Fargate tasks on ARM64 (Graviton)
 - **Status**: Accepted (2026-09-27)
@@ -189,15 +189,36 @@ a past entry in place.
   Hermes error in the container log, which is consistent with this project's boundary of not
   reimplementing tool-side validation.
 
+## ADR-0015: Install Node.js explicitly and install Paperclip from npm, not via `install.sh`
+- **Status**: Accepted (2026-09-27)
+- **Context**: Both facts here came from the first real `docker build` of these images, via the new
+  `smoke-build` CI job; neither was discoverable by review:
+  1. **Paperclip does not bundle Node.js.** The installer reported `[paperclip] Node.js was not
+     found` on an image without it. Its own script declares `MIN_NODE_MAJOR=20` and
+     `DEFAULT_NODE_MAJOR=22`.
+  2. **`https://paperclip.ing/install.sh` cannot run in a container image.** It sets `NO_PROMPT=1`
+     whenever stdin/stdout is not a TTY — always true during a build — and then delegates to
+     `npx --yes paperclipai@latest install --no-prompt`. The published `paperclipai` package rejects
+     that flag: `error: unknown option '--no-prompt'`. The script is unusable non-interactively
+     regardless of Node, and this is an upstream incompatibility that this project cannot fix.
+- **Decision**: Install Node.js explicitly in `images/paperclip/Dockerfile` from NodeSource — the
+  same source Paperclip's own script uses on Debian — pinned to major version 22 via
+  `ARG NODE_MAJOR=22`, then install the CLI directly with `npm install -g paperclipai@latest`.
+  Major 22 rather than 20 or 24 because it is what upstream itself installs and therefore tests
+  against; 24 also satisfies the declared minimum and is a one-flag override.
+- **Consequences**: The image builds non-interactively and deterministically, and `npx paperclipai`
+  resolves against a baked-in global install rather than fetching from the network on first boot.
+  The cost is a deliberate deviation from Paperclip's documented install path: this project now
+  tracks the npm package directly, so a future change to what `install.sh` does *besides* installing
+  Node and the package would not be picked up automatically. Revisit if upstream fixes the
+  `--no-prompt` incompatibility.
+
 ## Open (not decided)
 - **Full local networking/service-discovery/identity-store design** equivalent to the AWS
   architecture in sections 1-6 — narrowed out of scope for this product (the swarm owner's concern
   for their own local environment); see [INTENT.md](../INTENT.md).
-- **Whether Paperclip's installer provides its own Node.js runtime.** The entrypoint invokes
-  Paperclip as `npx paperclipai <verb>` and fails fast if `npx` is absent; upstream does not
-  document it. CI's `smoke-build` job asserts it at build time — if that assertion fails, the
-  decision to add an explicit Node.js layer to `images/paperclip/Dockerfile` gets made then, with
-  evidence, rather than pre-emptively on a guess.
 - **The literal foreground invocation for the Hermes gateway as PID 1.** `hermes gateway run
   --foreground` is used; research confirmed `hermes gateway install` sets up a *service*, and the
-  foreground form was not confirmed against upstream docs.
+  foreground form was not confirmed against upstream docs. The `smoke-build` job deliberately does
+  not exercise it (it sources the bootstrap instead of running the entrypoint, which would block),
+  so this remains the main unverified runtime assumption.
