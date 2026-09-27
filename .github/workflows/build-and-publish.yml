@@ -45,15 +45,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Shellcheck all shell scripts
-        # -x follows `source`d files via the `# shellcheck source=` directives in the entrypoints.
-        # Both source harness-bootstrap.sh by its in-container absolute path, which does not exist at
-        # lint time; without -x that is an SC1091 failure, and with it shellcheck actually analyses
-        # the sourced file in context, which is the stronger check.
+        # Both entrypoints source harness-bootstrap.sh by its in-container absolute path, which does
+        # not exist at lint time — an SC1091 failure on its own. `-x` makes shellcheck follow the
+        # `# shellcheck source=` directives in those files, and `--source-path=SCRIPTDIR` resolves
+        # those directives relative to each script's own directory rather than the current working
+        # directory, so this works from anywhere. The result is stronger than merely silencing
+        # SC1091: shellcheck analyses the sourced file in the context of each caller.
         run: |
-          shellcheck -x images/harness/harness-bootstrap.sh \
-                        images/harness/entrypoint.sh \
-                        images/paperclip/entrypoint.sh \
-                        templates/macos-container/run-instance.sh
+          shellcheck -x --source-path=SCRIPTDIR \
+                     images/harness/harness-bootstrap.sh \
+                     images/harness/entrypoint.sh \
+                     images/paperclip/entrypoint.sh \
+                     templates/macos-container/run-instance.sh
 
       - name: Hadolint harness Dockerfile
         uses: hadolint/hadolint-action@v3.5.0
