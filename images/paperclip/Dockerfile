@@ -8,8 +8,16 @@ FROM ${BASE_IMAGE}
 # install step, then drop privileges again below.
 USER root
 
+# Inherited from the base image; restated so this Dockerfile stays correct on its own if the base ever
+# changes. The Paperclip install below downloads to a file rather than piping, so nothing here depends
+# on pipefail today — this keeps the guarantee in place for anything added later.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # openssl is used by entrypoint.sh to generate BETTER_AUTH_SECRET / PAPERCLIP_TOOL_ACTION_SIGNING_SECRET
 # on first boot if the swarm owner didn't supply them — not guaranteed present on the slim base.
+#
+# hadolint ignore=DL3008
+#   Unpinned deliberately, for the same reason as the base image's apt-get step.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -34,6 +42,7 @@ WORKDIR /opt/agentic-team
 COPY entrypoint.sh ./paperclip-entrypoint.sh
 RUN chmod +x ./paperclip-entrypoint.sh && chown agent:agent ./paperclip-entrypoint.sh
 
-USER agent
+# Numeric, matching the base image — see the note there.
+USER 1000:1000
 
 ENTRYPOINT ["/opt/agentic-team/paperclip-entrypoint.sh"]

@@ -3,9 +3,21 @@
 # expects a standard glibc environment, not musl/Alpine.
 FROM debian:bookworm-slim
 
+# Every tool below installs via `curl … | bash`. Under the default `/bin/sh -c`, such a pipeline
+# reports the *last* command's status, so a failed download whose output happens to be accepted by
+# the shell would succeed silently and bake a broken image. Setting pipefail makes the RUN fail if
+# curl fails — the single most important robustness setting in this file.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Prerequisites for the tool installers below, plus yq (YAML read/write used by
 # harness-bootstrap.sh) and the GitHub CLI. git/tar are required by Hermes's and
 # OpenCode's install scripts respectively (see per-tool notes below).
+#
+# hadolint ignore=DL3008
+#   Debian package versions are deliberately unpinned. These are working defaults a swarm owner
+#   replaces for their own build (see configuration-docs/building-the-images.md); pinning them here
+#   would break the build every time Debian moves a point release, with no benefit to a project whose
+#   whole purpose is to be rebuilt downstream.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git tar \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -13,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
          > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y --no-install-recommends gh \
-    && curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$(dpkg --print-architecture) \
+    && curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$(dpkg --print-architecture)" \
          -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq \
     && rm -rf /var/lib/apt/lists/*
 
@@ -63,6 +75,9 @@ RUN chown -R agent:agent /home/agent \
 # reachable here after the privilege drop.
 ENV PATH="/home/agent/.local/bin:/home/agent/.opencode/bin:/root/.local/bin:${PATH}" \
     HOME=/home/agent
-USER agent
+# Numeric rather than `USER agent`: a name has to be resolvable through the image's own passwd file,
+# which not every runtime does when checking "is this container non-root" (Kubernetes'
+# runAsNonRoot among them). The uid/gid were created above.
+USER 1000:1000
 
 ENTRYPOINT ["/opt/agentic-team/entrypoint.sh"]
