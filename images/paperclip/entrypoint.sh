@@ -105,6 +105,7 @@ stop_children() {
 }
 
 SHUTDOWN_REQUESTED=0
+# shellcheck disable=SC2317  # reached via the `trap` below, which shellcheck cannot see
 on_signal() {
   SHUTDOWN_REQUESTED=1
   echo "[entrypoint] shutdown signal received — forwarding TERM to Paperclip and Hermes"
