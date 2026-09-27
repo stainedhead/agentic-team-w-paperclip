@@ -3,6 +3,18 @@
 Append-only log. To change a decision, add a new entry that supersedes the old one — never edit
 a past entry in place.
 
+> **Read ADR-0010 before ADR-0001 through ADR-0005.** Those five entries were inherited from
+> `../initial-context.md` and describe a **target AWS enterprise design that this project does not
+> build** (ECS services per persona, IAM/EFS isolation, Okta at ingress, Aurora state, CDK
+> factory). They are kept because they record real decisions about the eventual design, but nothing
+> in this repository implements them. ADR-0010 onwards describe what is actually built.
+
+| ADR | Subject | Applies to |
+|---|---|---|
+| 0001–0005 | ECS/Graviton fleet, IAM+EFS isolation, Okta ingress, Aurora state, CDK factory | Target design — **not built here** |
+| 0006–0009 | Image lineage, work-poll mechanism, `instance.yaml`, secret paths | What is built |
+| 0010–0014 | Scope boundary, config resolution, build context, process supervision, poll schedule | What is built |
+
 ## ADR-0001: Deploy the worker fleet as long-running ECS Fargate tasks on ARM64 (Graviton)
 - **Status**: Accepted (2026-09-27)
 - **Context**: Need isolated, long-running compute per agent persona.
@@ -95,9 +107,97 @@ a past entry in place.
   wants a shared (non-per-agent) credential, such as one model-host key across agents, deviates
   from this default deliberately rather than the product forcing per-agent secrets everywhere.
 
+## ADR-0010: This product's deliverable is images + templates + documentation, not a deployed team
+- **Status**: Accepted (2026-09-27)
+- **Context**: ADR-0001–0005, inherited from `../initial-context.md`, describe a full AWS
+  enterprise platform. Read without qualification they imply this repository deploys ECS services,
+  terminates Okta at an ALB, and runs an Aurora state store. It does none of that. The project's
+  actual purpose is narrower and needs to be stated as a decision rather than left implicit in
+  prose: provide the **baseline** a swarm owner builds their own solution from.
+- **Decision**: The deliverable is (a) two container images published to GHCR, (b) a single
+  `instance.yaml` configuration surface, (c) copy-pasteable configuration and deployment templates,
+  (d) CI/CD that builds, publishes and releases the images, and (e) the documentation covering all
+  of it. Deployment, team design, agent registration and environment-specific identity/networking/
+  governance are the swarm owner's responsibility. Agent behavior, scheduling internals and
+  failure/retry semantics are the upstream tools' responsibility (Hermes, OMP, OpenCode,
+  Paperclip). ADR-0001–0005 are retained as recorded target design, explicitly **not implemented**.
+- **Consequences**: A clear, defensible boundary — the project is not accountable for the behavior
+  of four third-party tools, nor for any swarm owner's environment. The cost is that a reader
+  looking for a turnkey agent team will not find one here; README.md and INTENT.md now say so in
+  their first paragraphs. The enterprise design in `technical-architecture.md` sections 1-6 remains
+  available as a starting point should a future feature pick it up.
+
+## ADR-0011: Resolve `instance.yaml` into one generated env file, not into each tool's native config
+- **Status**: Accepted (2026-09-27) — supersedes the *mechanism* described in ADR-0008 (its
+  decision to have a single `instance.yaml` stands unchanged)
+- **Context**: ADR-0008 stated the bootstrap "applies its values into each tool's own config on
+  startup". In practice the implementation only ever wrote a `~/.hermes/.env` file, and read just
+  three of the file's fields — `personas` and both `model_host.*` fields were inert, so two of the
+  four documented configuration sections did nothing. Closing the gap the other way (writing into
+  Hermes's, OMP's and OpenCode's native config files) would mean encoding three config schemas that
+  this project does not own, has not verified, and that can change under it at any upstream release.
+- **Decision**: The bootstrap resolves every `instance.yaml` field into a single generated
+  environment file (`~/.hermes/.env`) — `*_ref` fields dereferenced against the container's own
+  environment, scalar fields exported directly (`AGENT_PERSONAS`, `MODEL_HOST_PROVIDER`,
+  `MODEL_HOST_API_KEY`, `PAPERCLIP_AGENT_ID`, …). Tools and the swarm owner's own prompts/skills
+  consume those variables. The file is regenerated on every start and marked as generated.
+- **Consequences**: Every documented field now has an observable effect, and the project never
+  parses or rewrites a third-party config schema it does not control. A swarm owner who needs a
+  value inside a tool's *native* config places it there themselves, referencing these variables.
+
+## ADR-0012: Each image's Docker build context is its own directory under `images/`
+- **Status**: Accepted (2026-09-27)
+- **Context**: Both Dockerfiles `COPY` their sidecar files by bare filename
+  (`COPY instance.default.yaml harness-bootstrap.sh entrypoint.sh ./`). CI originally passed
+  `context: .` (the repo root), where those filenames do not exist — the build failed at the first
+  `COPY`. Two fixes were possible: prefix every `COPY` source with `images/<variant>/` and keep the
+  root context, or narrow the context to the image's own directory.
+- **Decision**: Narrow the context — `context: images/harness` and `context: images/paperclip`.
+- **Consequences**: `docker build images/harness` locally behaves identically to CI, which is the
+  property that makes the images reproducible for a swarm owner building their own variant. Build
+  contexts stay minimal (no repo docs or specs shipped into the daemon). The constraint is that a
+  Dockerfile cannot `COPY` anything from outside its own directory; if shared build-time files are
+  ever needed, this decision must be revisited rather than worked around with a symlink.
+
+## ADR-0013: Supervise the two-process container in the entrypoint with signal forwarding
+- **Status**: Accepted (2026-09-27)
+- **Context**: The harness+Paperclip image must run two processes. The original entrypoint started
+  Paperclip in the background, installed a `trap` to forward `TERM`, then `exec`'d the Hermes
+  gateway. `exec` replaces the shell process — which discards its traps — so the forwarding was
+  dead code: on container stop, Hermes received `TERM` and Paperclip was killed abruptly with the
+  container. Alternatives considered: add a real init (`tini`, `s6-overlay`, `supervisord`).
+- **Decision**: Do not `exec`. The entrypoint stays PID 1 as a small supervisor: start both
+  children in the background, `trap` `TERM`/`INT` to forward the signal to both and wait for them
+  to exit, and treat either child exiting as a reason to shut down the container.
+- **Consequences**: Correct signal propagation and orderly shutdown with no extra image
+  dependency, and a crashed Paperclip now takes the container down (visible to the orchestrator's
+  restart policy) instead of silently disappearing. This is deliberately *not* a restart
+  supervisor — a swarm owner wanting in-container restarts should add `s6-overlay` or run the two
+  processes as separate containers/tasks; ECS, Kubernetes and `container` all restart on exit,
+  which is why exiting is the better default here.
+
+## ADR-0014: The Paperclip poll schedule is an `instance.yaml` field with a default
+- **Status**: Accepted (2026-09-27)
+- **Context**: The poll interval (ADR-0007) was a constant inside `harness-bootstrap.sh`. The
+  configuration reference therefore had to tell swarm owners to edit the image's entrypoint to
+  change it — meaning rebuilding the image to alter an operational tuning value, while every other
+  instance-level setting was one edit to a file on the persistent volume.
+- **Decision**: Add `paperclip.poll_schedule` (a cron expression) to `instance.yaml`, defaulting to
+  `*/5 * * * *` when unset or absent, so existing configs keep their current behavior.
+- **Consequences**: Interval changes are a config edit plus restart, not an image rebuild. The
+  value is passed to `hermes cron create` unvalidated — an invalid cron expression surfaces as a
+  Hermes error in the container log, which is consistent with this project's boundary of not
+  reimplementing tool-side validation.
+
 ## Open (not decided)
-- Paperclip's own install/self-host method — see
-  [../specs/archive/260927-agentic-team-w-paperclip/research.md](../specs/archive/260927-agentic-team-w-paperclip/research.md).
-- Full local networking/service-discovery/identity-store design equivalent to the AWS
-  architecture above — narrowed out of scope for this product (the swarm owner's concern for
-  their own local environment); see [INTENT.md](../INTENT.md).
+- **Full local networking/service-discovery/identity-store design** equivalent to the AWS
+  architecture in sections 1-6 — narrowed out of scope for this product (the swarm owner's concern
+  for their own local environment); see [INTENT.md](../INTENT.md).
+- **Whether Paperclip's installer provides its own Node.js runtime.** The entrypoint invokes
+  Paperclip as `npx paperclipai <verb>` and fails fast if `npx` is absent; upstream does not
+  document it. CI's `smoke-build` job asserts it at build time — if that assertion fails, the
+  decision to add an explicit Node.js layer to `images/paperclip/Dockerfile` gets made then, with
+  evidence, rather than pre-emptively on a guess.
+- **The literal foreground invocation for the Hermes gateway as PID 1.** `hermes gateway run
+  --foreground` is used; research confirmed `hermes gateway install` sets up a *service*, and the
+  foreground form was not confirmed against upstream docs.

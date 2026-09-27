@@ -1,0 +1,63 @@
+{
+  "family": "agentic-team-REPLACE-agent-name",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "runtimePlatform": {
+    "operatingSystemFamily": "LINUX",
+    "cpuArchitecture": "ARM64"
+  },
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::REPLACE-account-id:role/REPLACE-ecs-task-execution-role",
+  "taskRoleArn": "arn:aws:iam::REPLACE-account-id:role/agentic-team-REPLACE-agent-name-task-role",
+  "volumes": [
+    {
+      "name": "agent-data",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "REPLACE-fs-id",
+        "transitEncryption": "ENABLED",
+        "authorizationConfig": {
+          "accessPointId": "REPLACE-fsap-id",
+          "iam": "ENABLED"
+        }
+      }
+    }
+  ],
+  "containerDefinitions": [
+    {
+      "name": "agent",
+      "image": "ghcr.io/stainedhead/agentic-team-w-paperclip/harness:latest",
+      "essential": true,
+      "mountPoints": [
+        {
+          "sourceVolume": "agent-data",
+          "containerPath": "/data",
+          "readOnly": false
+        }
+      ],
+      "secrets": [
+        {
+          "name": "MODEL_HOST_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:REPLACE-region:REPLACE-account-id:secret:/agents/REPLACE-agent-name/model-host-api-key"
+        },
+        {
+          "name": "PAPERCLIP_AGENT_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:REPLACE-region:REPLACE-account-id:secret:/agents/REPLACE-agent-name/paperclip-agent-api-key"
+        },
+        {
+          "name": "GITHUB_PAT",
+          "valueFrom": "arn:aws:secretsmanager:REPLACE-region:REPLACE-account-id:secret:/agents/REPLACE-agent-name/github-pat"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/agentic-team/REPLACE-agent-name",
+          "awslogs-region": "REPLACE-region",
+          "awslogs-stream-prefix": "agent",
+          "awslogs-create-group": "true"
+        }
+      }
+    }
+  ]
+}

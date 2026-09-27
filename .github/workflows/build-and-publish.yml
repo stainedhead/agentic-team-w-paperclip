@@ -1,18 +1,24 @@
 name: Build and Publish Images
 
-# Builds both container image variants (FR-016) and publishes them to GHCR (FR-030); cuts a
-# GitHub Release when one is published (FR-031). See
-# specs/archive/260927-agentic-team-w-paperclip/architecture.md for why the paperclip image is
-# built FROM the harness image (pinned by digest, not a mutable tag, to avoid a race between the
-# two builds landing on the registry).
+# Builds both container image variants and publishes them to GHCR; semver-tags them when a
+# GitHub Release is published. See documentation/technical-architecture.md for why the paperclip
+# image is built FROM the harness image (pinned by digest, not a mutable tag, to avoid a race
+# between the two builds landing on the registry).
 #
-# Trigger note (fix for review finding FR-006): only `push: branches: [main]` and
-# `release: types: [published]` trigger builds — a bare `tags: [...]` push is intentionally NOT a
-# separate trigger, since publishing a release also fires on the tag it's cut from, and having
-# both would double-build/double-publish the same images.
+# Build context note: each image's `context:` is its own directory under images/, NOT the repo
+# root. The Dockerfiles `COPY` their sidecar files (instance.default.yaml, harness-bootstrap.sh,
+# entrypoint.sh) by bare filename, which only resolves if the context is the directory those
+# files live in. This also means `docker build images/harness` works locally exactly as CI does.
+#
+# Trigger note: only `push: branches: [main]` and `release: types: [published]` publish — a bare
+# `tags: [...]` push is intentionally NOT a separate trigger, since publishing a release also
+# fires on the tag it's cut from, and having both would double-build/double-publish. Pull requests
+# run the lint and smoke-build gates but never push to the registry.
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   release:
     types: [published]
@@ -30,9 +36,9 @@ env:
 
 jobs:
   lint:
-    # Fix for review finding FR-005: validate the Dockerfiles and shell scripts before building
-    # images from them — this is exactly the class of bug (a shell logic error, a Dockerfile step
-    # that's a no-op) a linter catches before merge, per the Step 5 code review.
+    # Validate the Dockerfiles and shell scripts before building images from them — this is
+    # exactly the class of bug (a shell logic error, a Dockerfile step that's a no-op) a linter
+    # catches before merge.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -42,7 +48,8 @@ jobs:
         run: |
           shellcheck images/harness/harness-bootstrap.sh \
                      images/harness/entrypoint.sh \
-                     images/paperclip/entrypoint.sh
+                     images/paperclip/entrypoint.sh \
+                     templates/macos-container/run-instance.sh
 
       - name: Hadolint harness Dockerfile
         uses: hadolint/hadolint-action@v3
@@ -54,14 +61,111 @@ jobs:
         with:
           dockerfile: images/paperclip/Dockerfile
 
-  build-and-publish:
+  smoke-build:
+    # Single-arch (amd64, no QEMU) build of both images that is loaded locally and actually run,
+    # to verify the things static analysis cannot: that the tool installers succeed, that their
+    # binaries are still on PATH after the image drops to the non-root `agent` user, and that the
+    # instance.yaml bootstrap writes a config to /data. Nothing here is pushed.
     needs: lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up QEMU (for linux/arm64 builds — fix for review finding FR-003)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build harness image (amd64, local only)
+        uses: docker/build-push-action@v6
+        with:
+          context: images/harness
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: harness:smoke
+          cache-from: type=gha,scope=harness
+          cache-to: type=gha,scope=harness,mode=max
+
+      - name: Verify harness image runtime
+        run: |
+          set -euo pipefail
+          # Runs as the image's own USER (agent) with the image's own ENV, so this checks the
+          # post-privilege-drop PATH, not root's.
+          docker run --rm --entrypoint /bin/bash harness:smoke -c '
+            set -euo pipefail
+            echo "whoami=$(whoami) uid=$(id -u) HOME=${HOME}"
+            [ "$(id -u)" = "1000" ] || { echo "FAIL: image is not running as uid 1000"; exit 1; }
+            for tool in hermes omp opencode yq gh git; do
+              if command -v "${tool}" >/dev/null 2>&1; then
+                echo "ok: ${tool} -> $(command -v "${tool}")"
+              else
+                echo "FAIL: ${tool} is not on PATH after dropping to the agent user"
+                exit 1
+              fi
+            done
+          '
+
+      - name: Verify instance.yaml bootstrap writes a default config
+        run: |
+          set -euo pipefail
+          # Source the bootstrap directly rather than running the entrypoint, which would exec
+          # into the Hermes gateway and block. The default template has an empty paperclip.agent_id,
+          # so the cron-create branch is correctly skipped.
+          docker run --rm --entrypoint /bin/bash harness:smoke -c '
+            set -euo pipefail
+            source /opt/agentic-team/harness-bootstrap.sh
+            test -f /data/instance.yaml || { echo "FAIL: /data/instance.yaml was not bootstrapped"; exit 1; }
+            echo "ok: bootstrapped /data/instance.yaml"
+            test -f "${HOME}/.hermes/.env" || { echo "FAIL: ${HOME}/.hermes/.env was not written"; exit 1; }
+            echo "ok: wrote ${HOME}/.hermes/.env"
+          '
+
+      - name: Build paperclip image (amd64, local only, FROM the image just built)
+        uses: docker/build-push-action@v6
+        with:
+          context: images/paperclip
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: paperclip:smoke
+          build-args: |
+            BASE_IMAGE=harness:smoke
+          cache-from: type=gha,scope=paperclip
+          cache-to: type=gha,scope=paperclip,mode=max
+
+      - name: Verify paperclip image runtime
+        run: |
+          set -euo pipefail
+          # npx is a hard runtime dependency: Paperclip's CLI is invoked as `npx paperclipai <verb>`,
+          # so the entrypoint fails fast without it. Whether paperclip.ing/install.sh brings its own
+          # Node is not documented upstream — this step is what answers that, at build time rather
+          # than at a swarm owner's deploy time. If it fails, add Node to images/paperclip/Dockerfile.
+          docker run --rm --entrypoint /bin/bash paperclip:smoke -c '
+            set -euo pipefail
+            [ "$(id -u)" = "1000" ] || { echo "FAIL: image is not running as uid 1000"; exit 1; }
+            for tool in hermes omp opencode openssl; do
+              command -v "${tool}" >/dev/null 2>&1 || { echo "FAIL: ${tool} missing"; exit 1; }
+              echo "ok: ${tool}"
+            done
+            if command -v npx >/dev/null 2>&1; then
+              echo "ok: npx -> $(command -v npx)"
+            else
+              echo "FAIL: npx is not on PATH, but the entrypoint invokes Paperclip as \"npx paperclipai\"."
+              echo "      Paperclip cannot start in this image. Install Node.js in images/paperclip/Dockerfile."
+              exit 1
+            fi
+          '
+
+  build-and-publish:
+    needs: [lint, smoke-build]
+    # Pull requests exercise the gates above but must never publish to the registry.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for linux/arm64 builds)
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -89,12 +193,13 @@ jobs:
         id: build-harness
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: images/harness/Dockerfile
+          context: images/harness
           platforms: ${{ env.PLATFORMS }}
           push: true
           tags: ${{ steps.meta-harness.outputs.tags }}
           labels: ${{ steps.meta-harness.outputs.labels }}
+          cache-from: type=gha,scope=harness-multiarch
+          cache-to: type=gha,scope=harness-multiarch,mode=max
 
       - name: Extract metadata for paperclip image
         id: meta-paperclip
@@ -110,19 +215,19 @@ jobs:
       - name: Build and push paperclip image (multi-arch, FROM harness image pinned by digest)
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: images/paperclip/Dockerfile
+          context: images/paperclip
           platforms: ${{ env.PLATFORMS }}
           push: true
           tags: ${{ steps.meta-paperclip.outputs.tags }}
           labels: ${{ steps.meta-paperclip.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ env.REGISTRY }}/${{ env.HARNESS_IMAGE }}@${{ steps.build-harness.outputs.digest }}
+          cache-from: type=gha,scope=paperclip-multiarch
+          cache-to: type=gha,scope=paperclip-multiarch,mode=max
 
-# Note (fix for review finding FR-006/FR-031): there is deliberately no separate "create a
-# release" job here. FR-031 ("CI/CD shall support cutting GitHub Releases") is satisfied by this
-# workflow reacting correctly to a release a maintainer publishes (via the GitHub UI or
+# Note: there is deliberately no separate "create a release" job here. CI/CD supports cutting
+# GitHub Releases by reacting correctly to a release a maintainer publishes (via the GitHub UI or
 # `gh release create`) — the `release: types: [published]` trigger above builds and semver-tags
 # images for it. A prior version of this workflow also tried to *create* the release from a bare
-# tag push, which both duplicated this job (the FR-006 finding) and was redundant once triggered
-# by `release: published`, since the release already exists by that point.
+# tag push, which both duplicated this job and was redundant once triggered by `release:
+# published`, since the release already exists by that point.

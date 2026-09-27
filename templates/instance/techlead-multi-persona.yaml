@@ -1,0 +1,23 @@
+# A multi-persona instance backed by OpenRouter, polling more frequently than the default.
+#
+# One instance can carry several personas — how you distribute personas across instances is your
+# team-design decision, not something this product prescribes. Fewer, multi-persona instances cost
+# less to run; one instance per persona isolates failures and lets you scale personas
+# independently.
+#
+# Pair with templates/env/.env.example. Field reference:
+# user-docs/configuration-reference.md
+
+personas: [TechLead, Architect]
+
+model_host:
+  provider: openrouter
+  credentials_ref: MODEL_HOST_API_KEY
+
+paperclip:
+  agent_id: techlead-01           # must match the agent's registration in Paperclip
+  api_key_ref: PAPERCLIP_AGENT_API_KEY
+  poll_schedule: "*/2 * * * *"    # every 2 minutes instead of the default 5
+
+identity:
+  github_bot_account_ref: GITHUB_PAT

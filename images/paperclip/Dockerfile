@@ -1,11 +1,11 @@
-# Harness-plus-Paperclip image (FR-016b): built FROM the harness-only image so harness-layer
+# Harness-plus-Paperclip image: built FROM the harness-only image so harness-layer
 # changes (Hermes/OMP/OpenCode CLI, yq, gh) stay in sync across both variants automatically.
 # Adds Paperclip and runs both Hermes and Paperclip on startup.
 ARG BASE_IMAGE=ghcr.io/stainedhead/agentic-team-w-paperclip/harness:latest
 FROM ${BASE_IMAGE}
 
 # The harness image already dropped to a non-root USER; switch back to root for this image's own
-# install step, then drop privileges again below (FR-004).
+# install step, then drop privileges again below.
 USER root
 
 # openssl is used by entrypoint.sh to generate BETTER_AUTH_SECRET / PAPERCLIP_TOOL_ACTION_SIGNING_SECRET

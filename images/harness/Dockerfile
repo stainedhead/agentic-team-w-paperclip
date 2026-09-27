@@ -1,10 +1,10 @@
-# Harness-only image (FR-016a): installs Hermes, OMP, and OpenCode CLI; runs Hermes on startup
-# (FR-004). Built from Debian slim (glibc) since Hermes's own installer bootstraps uv/Python and
+# Harness-only image: installs Hermes, OMP, and OpenCode CLI; runs Hermes on startup as the
+# always-on harness. Built from Debian slim (glibc) since Hermes's own installer bootstraps uv/Python and
 # expects a standard glibc environment, not musl/Alpine.
 FROM debian:bookworm-slim
 
 # Prerequisites for the tool installers below, plus yq (YAML read/write used by
-# harness-bootstrap.sh) and the GitHub CLI (FR-033). git/tar are required by Hermes's and
+# harness-bootstrap.sh) and the GitHub CLI. git/tar are required by Hermes's and
 # OpenCode's install scripts respectively (see per-tool notes below).
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git tar \
@@ -43,14 +43,10 @@ WORKDIR /opt/agentic-team
 COPY instance.default.yaml harness-bootstrap.sh entrypoint.sh ./
 RUN chmod +x harness-bootstrap.sh entrypoint.sh
 
-# Run as a non-root user at runtime (consistent with this project's own UID/GID 1000:1000
-# convention — see documentation/architectual-decisions-record.md ADR-0002). The tool installers
-# above ran as root and may have placed binaries under /root's default install locations (e.g.
-# ~/.local/bin, a common convention for curl-based CLI installers); widen /root to read+execute
-# (not write) so those remain reachable after dropping privileges, and add the common path
-# explicitly since ENV PATH persists across layers/runtime while a modified .bashrc would not.
-# UNVERIFIED: no Docker daemon was available to confirm this actually works end-to-end — see
-# specs/archive/260927-agentic-team-w-paperclip-auto-review/implementation-notes.md.
+# Run as a non-root user at runtime (UID/GID 1000:1000, this project's convention — ADR-0002). The
+# installers above ran as root and may have placed binaries under /root's default install locations
+# (e.g. ~/.local/bin, the usual convention for curl-based CLI installers), so widen /root to
+# read+execute — not write — to keep those reachable after dropping privileges.
 RUN groupadd -g 1000 agent && useradd -u 1000 -g 1000 -m -d /home/agent -s /bin/bash agent \
     && chmod -R a+rX /root
 # Best-effort copy of whatever dotfiles/config the installers above wrote under /root — kept as
@@ -60,7 +56,12 @@ RUN groupadd -g 1000 agent && useradd -u 1000 -g 1000 -m -d /home/agent -s /bin/
 RUN cp -r /root/.[!.]* /home/agent/ 2>/dev/null; true
 RUN chown -R agent:agent /home/agent \
     && mkdir -p /data && chown -R agent:agent /opt/agentic-team /data
-ENV PATH="/root/.local/bin:${PATH}" \
+# Set on ENV (not in a shell rc file, which wouldn't apply to a non-login container process). Both
+# HOMEs' bin directories are listed because the installers ran as root, writing under /root, while
+# the runtime user's HOME is /home/agent — the dotfile copy above may leave a binary in either.
+# UNVERIFIED without a Docker daemon: CI's smoke-build job is what asserts every tool is actually
+# reachable here after the privilege drop.
+ENV PATH="/home/agent/.local/bin:/home/agent/.opencode/bin:/root/.local/bin:${PATH}" \
     HOME=/home/agent
 USER agent
 

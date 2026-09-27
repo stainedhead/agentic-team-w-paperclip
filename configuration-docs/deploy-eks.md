@@ -1,29 +1,88 @@
 # Deploying to AWS EKS
 
-Example for running either image variant (FR-016) as a Pod in a swarm owner's own EKS cluster,
-configurable to a target Account, Cluster, and Namespace (FR-008). This product does not automate
-this deployment — the swarm owner provisions the surrounding Kubernetes objects using this as a
-starting example, not a Helm chart this product ships.
+Running an instance as a Pod in your own EKS cluster, targeting a configurable account, cluster and
+namespace. An example to adapt — you provision the surrounding Kubernetes objects; this product does
+not ship a Helm chart.
 
-## Persistent storage (FR-024)
+Ready-to-edit manifests: [`templates/aws-eks/deployment.yaml`](../templates/aws-eks/deployment.yaml)
+(PersistentVolumeClaim + SecretProviderClass + Deployment).
 
-Mount a `PersistentVolumeClaim` at `/data`, backed by whatever storage class the swarm owner's
-cluster provides (e.g. EFS CSI driver, for consistency with the ECS Fargate example's use of EFS).
+## Shape of a deployment
 
-## Credentials (FR-028)
+One Deployment per agent instance:
 
-Use the AWS Secrets Store CSI Driver (or External Secrets Operator) to project Secrets Manager
-secrets as environment variables in the Pod spec, mapped to the variable names used in
-`instance.yaml`'s `*_ref` fields — see `credentials-and-secrets.md`'s AWS section for the default
-path convention (`/agents/${AGENT_ID}/*`).
+| Setting | Value | Why |
+|---|---|---|
+| `replicas` | `1` | Stateful singleton — two pods sharing a volume and a `paperclip.agent_id` would both claim the same work. |
+| `strategy.type` | `Recreate` | With `RollingUpdate` the new pod contends with the old one for the same volume. |
+| `serviceAccountName` | one per agent | Bound to an IAM role via IRSA or EKS Pod Identity — this is the agent's runtime identity. Scope it per persona. |
+| `securityContext` | `runAsUser/runAsGroup/fsGroup: 1000` | The images run as uid 1000 and must own their volume to write `instance.yaml`. |
+
+## Persistent storage
+
+A `PersistentVolumeClaim` mounted at `/data`. Use the **EFS CSI driver** rather than EBS unless you
+have a reason not to: EBS `ReadWriteOnce` pins the pod to a single availability zone, which makes
+rescheduling fragile. Any storage class your cluster provides will work.
+
+`fsGroup: 1000` in the pod's `securityContext` is what makes the mounted volume group-writable by the
+container's user. Without it the `instance.yaml` bootstrap fails on a permission error.
+
+## Credentials
+
+Project Secrets Manager values into the pod with the **AWS Secrets Store CSI Driver** (or the External
+Secrets Operator if that is what you already run), mapped to the variable names used by the `*_ref`
+fields in `instance.yaml`. See [credentials-and-secrets.md](credentials-and-secrets.md).
+
+Two details that catch people out with the CSI driver:
+
+- The CSI volume **must be mounted** in the container even if you consume the values via `envFrom`.
+  Mounting is what triggers the driver to fetch the secrets and materialize the Kubernetes Secret.
+- `secretObjects` in the `SecretProviderClass` is what creates that Kubernetes Secret. Without it the
+  values exist only as files under the mount path, and `envFrom.secretRef` has nothing to read.
+
+The template does both. For **Bedrock** as the model host, attach `bedrock:InvokeModel` to the
+IRSA/Pod Identity role and leave `model_host.credentials_ref` unset instead of storing static keys.
 
 ## Image
 
-Pull from GHCR: `ghcr.io/stainedhead/agentic-team-w-paperclip/harness:latest` or
-`.../paperclip:latest` (FR-030). Requires an `imagePullSecret` in the target namespace if the
-package is private.
+`ghcr.io/stainedhead/agentic-team-w-paperclip/harness:latest` or `.../paperclip:latest`, published for
+`linux/amd64` and `linux/arm64` — so Graviton node groups work without changes. Pin by digest for
+anything you need to reproduce.
 
-## Updating (FR-023)
+A private GHCR package needs an `imagePullSecret` in the target namespace.
 
-Update the Deployment/Pod spec's image reference to the new tag/digest; the existing
-`PersistentVolumeClaim` (and its `/data/instance.yaml`) is reused unchanged (FR-026).
+## Getting the first configuration onto the volume
+
+A fresh PVC is empty, so the first pod start writes the default `instance.yaml` and runs with it,
+which does nothing useful until filled in. Options, best first:
+
+- **Pre-seed via a ConfigMap and an init container** that copies it to `/data/instance.yaml` if absent
+  — this keeps each agent's configuration in your manifests, under version control, and makes the pod
+  reproducible from nothing.
+- `kubectl exec` into the running pod and edit in place, then restart. Fine for experimentation;
+  it leaves no record of what the instance is configured to do.
+
+## Namespacing the fleet
+
+Nothing here assumes a particular namespace. Deploying the whole fleet into one namespace per
+environment is the common choice; per-agent namespaces buy little, since the isolation that matters is
+the IAM role and the volume, not the namespace.
+
+## Observability
+
+Pod stdout goes wherever your cluster's log pipeline sends it. The startup bootstrap logs the
+personas, model host and agent id it resolved, and warns about any unresolvable `*_ref` — those lines
+are how you confirm a pod is configured as intended.
+
+## The harness+Paperclip variant
+
+Two processes plus an embedded PostgreSQL: raise the resource requests/limits above the template's
+starting point, add Paperclip's two boot secrets (`BETTER_AUTH_SECRET`,
+`PAPERCLIP_TOOL_ACTION_SIGNING_SECRET`) to the `SecretProviderClass`, and uncomment the `Service` at
+the end of the template to reach its UI/API in-cluster. If either process exits, the container exits
+and the kubelet restarts it per the pod's `restartPolicy` — the intended behavior (ADR-0013).
+
+## Updating
+
+Update the Deployment's image reference to the new tag or digest. The existing PVC and its
+`/data/instance.yaml` are reused unchanged — an image update never resets an instance's configuration.

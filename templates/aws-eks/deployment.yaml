@@ -1,0 +1,139 @@
+# EKS manifests for ONE agent instance: a PersistentVolumeClaim for /data, a SecretProviderClass
+# projecting AWS Secrets Manager values, and a Deployment running the instance.
+#
+# Replace every REPLACE-… placeholder, then:
+#   kubectl apply -n <namespace> -f deployment.yaml
+#
+# A starting example to adapt, not a Helm chart this project ships. Walkthrough:
+# configuration-docs/deploy-eks.md
+---
+# Persistent storage for /data — instance.yaml and tool state live here and must survive restarts
+# and image updates. EFS is used for consistency with the ECS example and because ReadWriteOnce on
+# EBS would pin the pod to one AZ; any storage class your cluster provides will do.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: REPLACE-agent-name-data
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: REPLACE-storage-class   # e.g. efs-sc (AWS EFS CSI driver)
+  resources:
+    requests:
+      storage: 20Gi
+---
+# Projects Secrets Manager secrets into the pod. Requires the AWS Secrets Store CSI Driver plus the
+# AWS provider installed in the cluster; the External Secrets Operator is an equally valid
+# alternative if that is what you already run.
+#
+# Each secretKey below is mapped to an environment variable in the Deployment's `env` block, and
+# those variable names must match the *_ref values in this instance's /data/instance.yaml.
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: REPLACE-agent-name-secrets
+spec:
+  provider: aws
+  parameters:
+    objects: |
+      - objectName: "/agents/REPLACE-agent-name/model-host-api-key"
+        objectType: "secretsmanager"
+        objectAlias: "model-host-api-key"
+      - objectName: "/agents/REPLACE-agent-name/paperclip-agent-api-key"
+        objectType: "secretsmanager"
+        objectAlias: "paperclip-agent-api-key"
+      - objectName: "/agents/REPLACE-agent-name/github-pat"
+        objectType: "secretsmanager"
+        objectAlias: "github-pat"
+  # Mirrors the mounted files into a Kubernetes Secret so they can be consumed as env vars.
+  secretObjects:
+    - secretName: REPLACE-agent-name-env
+      type: Opaque
+      data:
+        - objectName: "model-host-api-key"
+          key: MODEL_HOST_API_KEY
+        - objectName: "paperclip-agent-api-key"
+          key: PAPERCLIP_AGENT_API_KEY
+        - objectName: "github-pat"
+          key: GITHUB_PAT
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: REPLACE-agent-name
+  labels:
+    app.kubernetes.io/name: agentic-team
+    app.kubernetes.io/instance: REPLACE-agent-name
+spec:
+  # One replica, always. These instances are stateful singletons: two pods sharing one volume and
+  # one Paperclip agent_id would both claim the same work.
+  replicas: 1
+  strategy:
+    type: Recreate          # not RollingUpdate — the new pod would contend for the same volume
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: REPLACE-agent-name
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agentic-team
+        app.kubernetes.io/instance: REPLACE-agent-name
+    spec:
+      # Bind this to an IAM role via IRSA / EKS Pod Identity — that role is the agent's own runtime
+      # identity, and is also what lets the CSI driver read the secrets above. Scope it to only
+      # what this persona may touch.
+      serviceAccountName: REPLACE-agent-name
+      securityContext:
+        # The images run as uid/gid 1000 and must own their volume to write instance.yaml.
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: agent
+          # Swap for .../paperclip:latest to host Paperclip here too, and raise the resources below.
+          # Pin by digest (image@sha256:...) for anything you need to reproduce.
+          image: ghcr.io/stainedhead/agentic-team-w-paperclip/harness:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: REPLACE-agent-name-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            # Mounting the CSI volume is what triggers the driver to fetch the secrets and
+            # materialise the Kubernetes Secret referenced above — it is required even though the
+            # container reads the values via envFrom rather than from this path.
+            - name: secrets-store
+              mountPath: /mnt/secrets
+              readOnly: true
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: REPLACE-agent-name-data
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: REPLACE-agent-name-secrets
+---
+# For the harness+Paperclip variant, expose the Paperclip UI/API in-cluster. Not needed for a
+# harness-only instance, which serves nothing.
+#
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: REPLACE-agent-name-paperclip
+# spec:
+#   selector:
+#     app.kubernetes.io/instance: REPLACE-agent-name
+#   ports:
+#     - name: http
+#       port: 80
+#       targetPort: REPLACE-paperclip-port   # confirm against Paperclip's own docs

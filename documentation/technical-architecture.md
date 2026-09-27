@@ -4,24 +4,95 @@
 > `../initial-context.md` is the frozen originating draft — where the two differ, this file wins.
 
 ## Status
-Sections 1-6 below are the original target enterprise design (Okta SSO, Aurora Serverless,
-ALB/API Gateway ingress, Cloud Map service discovery) — design intent, still **not built**.
-Section 0 describes what has actually been built so far, from
-`specs/archive/260927-agentic-team-w-paperclip/` and its code-review fix pass in
-`specs/archive/260927-agentic-team-w-paperclip-auto-review/`: two container images, CI/CD to
-GHCR, and configuration documentation. Where they conflict, Section 0 is what's real today. None
-of it has been verified with a real `docker build`/`run` yet (see README.md's Status section).
+**Read Section 0 first.** It describes what this project actually builds and ships. Sections 1-6
+are the original target enterprise design inherited from `../initial-context.md` (Okta SSO, Aurora
+Serverless, ALB/API Gateway ingress, Cloud Map service discovery) — recorded design intent, still
+**not built and not this project's deliverable** (see ADR-0010). Where the two conflict, Section 0
+is what is real today.
+
+Section 0 reflects `specs/archive/260927-agentic-team-w-paperclip/` and its code-review fix pass in
+`specs/archive/260927-agentic-team-w-paperclip-auto-review/`. None of it has been verified with a
+real `docker build`/`run` yet — CI's `smoke-build` job is what will confirm it (see README.md's
+Status section).
 
 ## 0. What's actually built (first shipped feature)
+
+### Image lineage
+
+Two images, the second built `FROM` the first so harness-layer changes stay in sync
+automatically (ADR-0006). CI pins the `FROM` relationship **by digest**, not by the mutable
+`:latest` tag, so the paperclip build cannot race against the harness build landing on the
+registry.
+
+```mermaid
+flowchart TB
+    BASE["debian:bookworm-slim<br/><i>glibc — Hermes's installer bootstraps uv/Python</i>"]
+
+    subgraph H["images/harness/ → ghcr.io/.../harness"]
+        direction TB
+        H1["Prereqs: ca-certificates, curl, git, tar<br/>+ gh (GitHub CLI) + yq"]
+        H2["Hermes · OMP · OpenCode CLI<br/><i>each via its own upstream install script</i>"]
+        H3["/opt/agentic-team/<br/>instance.default.yaml · harness-bootstrap.sh · entrypoint.sh"]
+        H4["USER agent (uid/gid 1000:1000) — non-root"]
+        H5["ENTRYPOINT → Hermes gateway"]
+        H1 --> H2 --> H3 --> H4 --> H5
+    end
+
+    subgraph P["images/paperclip/ → ghcr.io/.../paperclip"]
+        direction TB
+        P1["USER root (temporarily) + openssl"]
+        P2["Paperclip<br/><i>checksum-verified upstream installer</i>"]
+        P3["paperclip-entrypoint.sh<br/>USER agent again"]
+        P4["ENTRYPOINT → Hermes gateway <b>and</b> Paperclip"]
+        P1 --> P2 --> P3 --> P4
+    end
+
+    BASE --> H
+    H ==>|"FROM ${BASE_IMAGE}<br/><b>digest-pinned by CI</b>"| P
+
+    style H fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px
+    style P fill:#e6f4ea,stroke:#137333,stroke-width:2px
+```
+
+Both Dockerfiles `COPY` their sidecar files by bare filename, so each image's **build context is
+its own directory** (`docker build images/harness`), not the repo root. CI sets `context:`
+accordingly — see `configuration-docs/building-the-images.md`.
+
+### Build and publish pipeline
+
+```mermaid
+flowchart LR
+    TRIG["push → main<br/>pull_request<br/>release published<br/>workflow_dispatch"] --> LINT
+
+    LINT["<b>lint</b><br/>shellcheck × 3 scripts<br/>hadolint × 2 Dockerfiles"]
+    SMOKE["<b>smoke-build</b><br/>amd64 only, never pushed<br/>runs both images:<br/>uid 1000? tools on PATH?<br/>instance.yaml bootstrap?"]
+    PUB["<b>build-and-publish</b><br/>QEMU + Buildx<br/>linux/amd64 + linux/arm64"]
+
+    LINT --> SMOKE --> PUB
+    PUB -->|"harness image"| DIG["digest"]
+    DIG -->|"BASE_IMAGE=...@sha256:…"| PUB2["paperclip image"]
+    PUB2 --> GHCR["GHCR<br/>:latest · :sha-… · :branch · :semver"]
+
+    SMOKE -.->|"pull_request stops here —<br/>gates run, nothing published"| STOP(["no publish"])
+
+    style LINT fill:#fef7e0,stroke:#b06000
+    style SMOKE fill:#fef7e0,stroke:#b06000
+    style PUB fill:#e8f0fe,stroke:#1a73e8
+    style GHCR fill:#e6f4ea,stroke:#137333
+```
+
+### Components and behavior
 
 - **Two container images** (`images/harness/`, `images/paperclip/`) — the harness-only image
   installs Hermes (Nous Research Hermes Agent), OMP (oh-my-pi), and OpenCode CLI via each tool's
   own verified install script, and runs Hermes on startup; the harness+Paperclip image is built
   `FROM` the harness image (see ADR-0006) and runs both Hermes and Paperclip.
-- **CI/CD** (`.github/workflows/build-and-publish.yml`) lints (shellcheck, hadolint), then builds
-  both images for `linux/amd64` and `linux/arm64` and publishes to GHCR, pinning the
-  harness+Paperclip image's base by digest; reacts to a published GitHub Release by tagging
-  images with its semver.
+- **CI/CD** (`.github/workflows/build-and-publish.yml`) runs three gated jobs: `lint` (shellcheck,
+  hadolint) → `smoke-build` (single-arch build of both images, loaded and actually run to assert
+  uid 1000, tools on `PATH` post-privilege-drop, and a working `instance.yaml` bootstrap; never
+  pushed) → `build-and-publish` (multi-arch `linux/amd64` + `linux/arm64` to GHCR, harness digest
+  pinned into the paperclip build). Pull requests run the first two jobs only. A published GitHub
+  Release semver-tags the images.
 - **Both images run as a non-root user** (UID/GID 1000:1000), not root, though this hasn't been
   verified with a real `docker build`/`run` — see the Status note above.
 - **Paperclip itself is started via `npx paperclipai onboard --yes` (first boot) or

@@ -1,0 +1,22 @@
+# Minimal instance.yaml — a single Reviewer persona backed by Anthropic.
+#
+# Place at <your volume>/instance.yaml (mounted as /data/instance.yaml). If the file is absent on
+# first start the container writes its own default template there instead; this is that template
+# already filled in.
+#
+# Pair with templates/env/.env.example. Field reference:
+# user-docs/configuration-reference.md
+
+personas: [Reviewer]
+
+model_host:
+  provider: anthropic
+  credentials_ref: MODEL_HOST_API_KEY
+
+paperclip:
+  agent_id: reviewer-01           # must match the agent's registration in Paperclip
+  api_key_ref: PAPERCLIP_AGENT_API_KEY
+  poll_schedule: ""               # empty = every 5 minutes
+
+identity:
+  github_bot_account_ref: GITHUB_PAT
