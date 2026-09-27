@@ -52,12 +52,12 @@ jobs:
                      templates/macos-container/run-instance.sh
 
       - name: Hadolint harness Dockerfile
-        uses: hadolint/hadolint-action@v3
+        uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: images/harness/Dockerfile
 
       - name: Hadolint paperclip Dockerfile
-        uses: hadolint/hadolint-action@v3
+        uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: images/paperclip/Dockerfile
 
