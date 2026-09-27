@@ -78,9 +78,16 @@ The bootstrap can be exercised without starting Hermes by sourcing it:
 `docker run --rm -it --entrypoint /bin/bash <image>` then
 `source /opt/agentic-team/harness-bootstrap.sh`.
 
-**Nothing has been confirmed against a real Docker daemon yet.** Prefer changes that CI's smoke-build
-job can verify over changes that only static reading can justify, and say plainly in docs what remains
-unverified rather than implying it works.
+**Both images build and pass smoke-build in CI.** Keep it that way: prefer changes that smoke-build
+can verify over changes only static reading can justify, extend its assertions when you add behavior,
+and say plainly in docs what remains unverified rather than implying it works. Still unverified:
+volume permissions against a real mount, the entrypoints running as PID 1 (smoke-build sources the
+bootstrap instead, since running an entrypoint would block), and `linux/arm64`.
+
+That job exists because a prior review pass "verified" these images by reading them and was wrong on
+four counts — a missing `libatomic1`, an `opencode` binary that was never on `PATH`, an upstream
+installer that cannot run without a TTY, and a lint action pinned to a nonexistent version so the
+gate had never once executed.
 
 The infrastructure draft (`initial-context.md`) specifies AWS CDK ("Model 3: CDK Factory Pattern") as
 the intended IaC approach for the target design in `technical-architecture.md` sections 1-6; that

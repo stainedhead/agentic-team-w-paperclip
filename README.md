@@ -169,14 +169,14 @@ Two image variants are published:
 | CI/CD — lint, smoke build, multi-arch publish to GHCR, release tagging | Implemented |
 | Configuration and user documentation, templates | Implemented |
 | **Harness image — builds and runs** | ✅ **Verified in CI** |
-| **Harness+Paperclip image — builds and runs** | In progress — see below |
+| **Harness+Paperclip image — builds and runs** | ✅ **Verified in CI** |
 
 The images were originally written and reviewed *statically*, with no Docker daemon available. CI now
 has a **`smoke-build` job** that builds both images single-arch, runs them, and asserts what static
-reading cannot. Running it for real found four defects that review had missed, which is the honest
+reading cannot. Running it for real found four defects that review had missed — which is the honest
 argument for having it.
 
-**Confirmed working** — actual output from the harness image:
+**Confirmed working** — actual assertion output from both images:
 
 ```
 whoami=agent uid=1000 HOME=/home/agent
@@ -188,16 +188,21 @@ ok: gh       -> /usr/bin/gh
 ok: git      -> /usr/bin/git
 ok: bootstrapped /data/instance.yaml
 ok: wrote /home/agent/.hermes/.env
+ok: npx      -> /usr/bin/npx          # paperclip image
 ```
 
-So for the harness image: it builds, runs as the non-root user, every tool survives the privilege
-drop, and the `instance.yaml` bootstrap works. What the build taught us:
+Both images build, run as the non-root user, keep every tool on `PATH` after the privilege drop, and
+bootstrap `instance.yaml` correctly. What the builds taught us, none of it visible to review:
 
-- `libatomic1` was missing — Hermes's package manager downloads a Node.js toolchain that links
-  `libatomic.so.1`, and the installer reported only `✗ pm install failed`.
-- Paperclip does not bundle Node.js, and its `install.sh` cannot run non-interactively at all (it
-  passes a `--no-prompt` flag the published package rejects). Node 22 and the `paperclipai` package
-  are now installed directly — see ADR-0015.
+- **`libatomic1` was missing.** Hermes's package manager downloads a Node.js toolchain that links
+  `libatomic.so.1`; the installer reported only `✗ pm install failed`.
+- **Paperclip does not bundle Node.js**, and its `install.sh` cannot run non-interactively at all — it
+  passes a `--no-prompt` flag the published package rejects. Node 22 and `paperclipai` are now
+  installed directly; see ADR-0015.
+- **`opencode` lives in `/home/agent/.opencode/bin`**, a directory the original `PATH` did not contain
+  — that tool would not have been reachable at all.
+- **Buildx cannot see `docker load`ed images**, so the paperclip build could not use the
+  freshly-built harness image as its base until the job was given a throwaway local registry.
 
 What `smoke-build` **does not** cover:
 

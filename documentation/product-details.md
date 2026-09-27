@@ -92,9 +92,11 @@ Documented and templated, not automated: example recipes and copy-pasteable arti
 
 ## Verification status
 
-Nothing in the images has yet been confirmed by a real `docker build`/`docker run` — see the Status
-section of [../README.md](../README.md) for exactly what is unverified and which CI job is meant to
-settle it.
+Both images build and pass runtime verification in CI's `smoke-build` job — they run as the non-root
+user, keep every tool on `PATH` after the privilege drop, and bootstrap `instance.yaml` correctly. See
+the Status section of [../README.md](../README.md) for the assertion output and for what is still
+unverified: volume permissions against a real mount, the entrypoints running as PID 1, and
+`linux/arm64`.
 
 See [technical-architecture.md](technical-architecture.md) for the technical design and
 [architectual-decisions-record.md](architectual-decisions-record.md) for the reasoning behind these

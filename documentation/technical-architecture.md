@@ -11,9 +11,10 @@ Serverless, ALB/API Gateway ingress, Cloud Map service discovery) — recorded d
 is what is real today.
 
 Section 0 reflects `specs/archive/260927-agentic-team-w-paperclip/` and its code-review fix pass in
-`specs/archive/260927-agentic-team-w-paperclip-auto-review/`. None of it has been verified with a
-real `docker build`/`run` yet — CI's `smoke-build` job is what will confirm it (see README.md's
-Status section).
+`specs/archive/260927-agentic-team-w-paperclip-auto-review/`, plus a docs/design review pass that
+added CI's `smoke-build` job. **Both images now build and pass runtime verification in CI** — see
+README.md's Status section for the assertion output and for what remains unverified (volume
+permissions, the entrypoints as PID 1, and `linux/arm64`).
 
 ## 0. What's actually built (first shipped feature)
 
