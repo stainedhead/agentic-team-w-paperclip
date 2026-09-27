@@ -10,7 +10,7 @@
 | 1 | Research | Complete |
 | 2 | Data Modeling | In Progress |
 | 3 | Architecture | In Progress |
-| 4 | Implementation | In Progress |
+| 4 | Implementation | Complete |
 | 5 | Tests | Not Started |
 
 ## Phase 0 Task Checklist
@@ -61,9 +61,9 @@
       `images/paperclip/Dockerfile`)
 - [ ] Run an actual `docker build` against both Dockerfiles to verify end-to-end (no Docker
       daemon available in this environment during implementation)
-- [ ] `documentation/architectual-decisions-record.md` — FR-016's base-image-layering decision
-      still not recorded there
-- [ ] `user-docs/` guides — deferred to Step 4 of the dev-flow pipeline
+- [x] `documentation/architectual-decisions-record.md` — recorded ADR-0006 (FR-016 base-image
+      layering), ADR-0007 (poll mechanism), ADR-0008 (instance.yaml), ADR-0009 (Secrets Manager
+      path convention)
 
 ## Blockers
 
@@ -92,3 +92,10 @@ a Docker daemon is available.
   OpenCode CLI against each tool's actual install script; `images/harness/Dockerfile` updated
   accordingly. Paperclip's own install method remains an unconfirmed, swarm-owner-editable
   default.
+- 2026-09-27: Recorded ADR-0006 through ADR-0009 in
+  `documentation/architectual-decisions-record.md`. Step 3 (Implement Product) complete.
+- 2026-09-27: Step 4 (Documentation and User Docs) — updated `documentation/product-summary.md`,
+  `product-details.md`, and `technical-architecture.md` (added a "what's actually built" section
+  distinguishing it from the original enterprise-draft target design) to reflect the real build;
+  updated root `README.md`; wrote `user-docs/getting-started.md`, `configuration-reference.md`,
+  and `usage-examples.md`, replacing the placeholder `user-docs/README.md`.
