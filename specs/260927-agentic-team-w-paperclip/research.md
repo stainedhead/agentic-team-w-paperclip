@@ -9,19 +9,18 @@
    see Existing Implementations below.
 2. ~~**Paperclip's actual API/config surface**~~ — **Answered 2026-09-27**, see Existing
    Implementations and API Documentation below.
-3. **AWS Secrets Manager path convention** — still open. `documentation/architectual-decisions-record.md`
-   (ADR-0002) scopes credentials by path per agent (`/agents/${AGENT_ID}/*`) for filesystem/IAM
-   isolation — should model-host, auth-identity, and Paperclip Agent API key credentials reuse
-   that same path convention, or does each need its own scheme?
-4. **macOS `Container` persistent storage mechanism** — still open. What does the native macOS
-   `Container` runtime offer for a persistent volume (bind mount, named volume, other), and what
-   is the minimal working recipe worth documenting per the narrowed local-mode open question in
-   the PRD?
+3. ~~**AWS Secrets Manager path convention**~~ — **Answered 2026-09-27**: reuses ADR-0002's
+   per-agent path scheme (`/agents/${AGENT_ID}/*`) for all newly-identified credentials too. See
+   `configuration-docs/credentials-and-secrets.md`.
+4. ~~**macOS `Container` persistent storage mechanism**~~ — **Answered 2026-09-27**: a plain
+   host-directory bind mount via `container run --volume <host-dir>:/data`. See
+   `configuration-docs/deploy-macos-container.md`.
 5. **CI/CD platform** — **Answered 2026-09-27** (GitHub Actions + `docker/build-push-action` to
-   GHCR, standard pattern confirmed current). **Instance config schema — still open**: the
-   harness instance's own configuration file (persona assignment, model-host selection — FR-017)
-   isn't any of the four tools' own config format; its shape and location still need deciding
-   (see `architecture.md`).
+   GHCR, standard pattern confirmed current). **Instance config schema** — **Answered 2026-09-27**:
+   a single `/data/instance.yaml` file, schema decided in `architecture.md`.
+6. ~~**Exact install commands for Hermes, OMP, OpenCode CLI**~~ — **Answered 2026-09-27**,
+   verified directly against each tool's actual install script (not just doc summaries). See
+   Existing Implementations below.
 
 ## Industry Standards
 
@@ -39,8 +38,13 @@ Confirmed 2026-09-27 via web research (all four tools are real, current products
 - **Hermes** = Nous Research's **Hermes Agent**.
   [hermes-agent.nousresearch.com](https://hermes-agent.nousresearch.com/docs/user-guide/features/cron) ·
   [github.com/NousResearch/hermes-agent](https://github.com/nousresearch/hermes-agent)
-  - Install: `hermes gateway install` (user service) or `sudo hermes gateway install --system`
-    (Linux boot service).
+  - **Base install, verified 2026-09-27 by fetching the actual install script** (not just docs):
+    `curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive`.
+    The script clones the repo via git and bootstraps its own `uv`/Python runtime — requires
+    `git`, `curl`, `tar`, sha256 utilities as prerequisites, and network access during install.
+    `--non-interactive` skips setup/gateway prompts (needed for a Docker build).
+  - `hermes gateway install` (user service) or `sudo hermes gateway install --system` (Linux boot
+    service) sets up the gateway *service* on top of the already-installed binary above.
   - Config: YAML at `~/.hermes/config.yaml`; secrets at `~/.hermes/.env`.
   - **Cron confirmed real**: built-in scheduler, gateway ticks every 60s and runs due jobs in
     isolated sessions. Create via chat (`/cron add "schedule" "task"`), CLI (`hermes cron create
@@ -61,9 +65,11 @@ Confirmed 2026-09-27 via web research (all four tools are real, current products
   [github.com/can1357/oh-my-pi](https://github.com/can1357/oh-my-pi)
   - A terminal coding agent: subagents, plan mode, LSP/DAP, Rust engine, 60+ model providers
     (Anthropic, OpenAI, Gemini, etc.) — not tied to one model.
-  - Install: **not confirmed** from the CLI reference page fetched (only `omp update` for
-    upgrades was documented there). Verify the actual install command directly from omp.sh before
-    writing the Dockerfile step — flagged as a risk in `spec.md`.
+  - **Base install, verified 2026-09-27 by fetching the actual install script**:
+    `curl -fsSL https://omp.sh/install | sh`. Self-contained — only needs `curl` as a
+    prerequisite. On Alpine/musl base images (not used here — this product's Dockerfiles are
+    Debian-based) the prebuilt binary additionally needs `apk add libstdc++ libgcc`. Alternative
+    if Node/Bun is already present: `bun install -g @oh-my-pi/pi-coding-agent`.
   - Config: YAML. Global at `~/.omp/agent/config.yml` or `.yaml`; project-local at
     `.omp/config.yml`; layered built-in defaults → global → project → env vars → runtime flags,
     or via repeatable `--config <file>`.
@@ -75,8 +81,15 @@ Confirmed 2026-09-27 via web research (all four tools are real, current products
     intended tool.
 
 - **OpenCode CLI**. [opencode.ai/docs/cli](https://opencode.ai/docs/cli/)
-  - Install: curl script, npm, pnpm, bun, or brew (`upgrade --method` flag records which one was
-    used).
+  - **Base install, verified 2026-09-27 by fetching the actual install script**:
+    `curl -fsSL https://opencode.ai/install | bash` — downloads a prebuilt binary
+    (linux-arm64/linux-x64 both covered), needs only `curl` + `tar` as prerequisites, **no
+    Node/npm required** on this path. This is the method used in `images/harness/Dockerfile`.
+  - Alternative (needs Node/npm or Bun preinstalled): `npm i -g opencode-ai@latest` (same package
+    name for `bun install -g` / `pnpm install -g`); confirmed live on the npm registry. `brew
+    install anomalyco/tap/opencode` for Homebrew.
+  - **Repo moved**: `sst/opencode` → **`anomalyco/opencode`** — relevant if referencing the repo
+    directly (e.g. a brew tap) rather than the install script/npm package.
   - Config: env vars `OPENCODE_CONFIG` (path), `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG_CONTENT`
     (inline JSON); auth/credentials at `~/.local/share/opencode/auth.json`.
   - Non-interactive/automation: `opencode run [message]` executes a prompt and exits (no TUI);
@@ -123,18 +136,16 @@ See Industry Standards above.
 
 ## Open Questions
 
-- Carried from the PRD: local-mode persistent storage recipe for the macOS `Container` runtime
-  (research question 4 above).
-- AWS Secrets Manager path convention for the newly-identified credential set: model-host
-  credentials, auth-identity credentials, and now also a Paperclip Agent API key and a GitHub PAT
-  (research question 3 above).
-- Instance configuration file format/location (persona assignment, model-host selection) — the
-  one piece of new "architecture" this product needs to define itself, since it doesn't belong to
-  any of the four existing tools (research question 5's second half).
-- OMP's install method — not confirmed from the docs fetched; verify directly before
-  implementation.
+- **Paperclip's own install/self-host method** — not researched (the follow-up research pass was
+  scoped to Hermes/OMP/OpenCode CLI only, since Paperclip's registration/work-retrieval API
+  surface was already covered by the first research pass). `images/paperclip/Dockerfile` carries
+  this as a swarm-owner-editable default pending confirmation.
 - Whether Paperclip's roadmap will add native GitHub Projects support — untracked/out of scope
   for this product either way, per the narrowed FR-033 deliverable.
+- The Hermes install script's PATH/environment setup wasn't independently verified to work
+  correctly inside a non-interactive Docker `RUN` layer (vs. an interactive shell session) — worth
+  confirming with an actual `docker build` once a Docker daemon is available (not available in
+  this environment during implementation).
 
 ## References
 

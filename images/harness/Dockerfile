@@ -1,12 +1,13 @@
 # Harness-only image (FR-016a): installs Hermes, OMP, and OpenCode CLI; runs Hermes on startup
-# (FR-004). Built from Debian slim rather than Alpine since all three tools are more likely to
-# ship glibc-linked binaries/npm packages than musl-compatible ones.
+# (FR-004). Built from Debian slim (glibc) since Hermes's own installer bootstraps uv/Python and
+# expects a standard glibc environment, not musl/Alpine.
 FROM debian:bookworm-slim
 
 # Prerequisites for the tool installers below, plus yq (YAML read/write used by
-# harness-bootstrap.sh) and the GitHub CLI (FR-033).
+# harness-bootstrap.sh) and the GitHub CLI (FR-033). git/tar are required by Hermes's and
+# OpenCode's install scripts respectively (see per-tool notes below).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git unzip nodejs npm \
+      ca-certificates curl git tar \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
          -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -17,22 +18,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Hermes (Nous Research Hermes Agent) ---------------------------------------------------
-# The exact install command is an environment-specific detail a swarm owner supplies/confirms for
-# their own build (version pin, install source, etc.) — this product's job is to document the
-# pattern, not guarantee one exact command. See configuration-docs/ for the documented example;
-# replace the line below with the swarm owner's actual install step.
-# RUN <install hermes here — see configuration-docs/>
+# Verified 2026-09-27 against the actual install script (not just docs) — see
+# specs/260927-agentic-team-w-paperclip/research.md. The script clones the repo via git and
+# bootstraps its own uv/Python runtime, so it needs network access during build and `git` as a
+# prerequisite (installed above). --non-interactive skips setup/gateway prompts, needed for a
+# non-interactive Docker build. This is a default the swarm owner can replace (e.g. to pin a
+# specific Hermes version) for their own build.
+RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive
 
 # --- OMP (oh-my-pi) -------------------------------------------------------------------------
-# Same note as Hermes above — see configuration-docs/ for the documented example.
-# RUN <install omp here — see configuration-docs/>
+# Verified 2026-09-27 against the actual install script. Self-contained; only needs curl (already
+# installed above). Default the swarm owner can replace for their own build.
+RUN curl -fsSL https://omp.sh/install | sh
 
 # --- OpenCode CLI ---------------------------------------------------------------------------
-# Confirmed install methods exist (curl script, npm, pnpm, bun, brew — opencode.ai/docs/cli), but
-# the exact npm package name below is not yet confirmed against the docs. Using npm since Node.js
-# is already a prerequisite above; verify the package name before this build is trusted.
-# TODO(verify): confirm exact npm package name against opencode.ai/docs/cli.
-RUN npm install -g opencode-ai
+# Verified 2026-09-27 against the actual install script. The curl-script path downloads a
+# prebuilt binary (linux-arm64/linux-x64) — no Node/npm needed, so npm/nodejs are deliberately
+# NOT in this image's prerequisites. Default the swarm owner can replace (e.g. `npm i -g
+# opencode-ai@latest` if they'd rather pin an npm version — that route needs Node/npm added
+# above).
+RUN curl -fsSL https://opencode.ai/install | bash
 
 WORKDIR /opt/agentic-team
 COPY instance.default.yaml harness-bootstrap.sh entrypoint.sh ./

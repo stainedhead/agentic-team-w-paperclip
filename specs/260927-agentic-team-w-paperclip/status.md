@@ -55,18 +55,21 @@
       Manager path convention
 - [x] `configuration-docs/deploy-macos-container.md`, `deploy-ecs-fargate.md`, `deploy-eks.md`
       (FR-032) — macOS persistent-storage open question resolved
-- [ ] Confirm exact install commands for Hermes and OMP (Dockerfile RUN lines are commented
-      placeholders pending this — see implementation-notes.md)
-- [ ] Confirm Paperclip's own install/self-host method
+- [x] Confirm exact install commands for Hermes, OMP, and OpenCode CLI (verified against each
+      tool's actual install script; `images/harness/Dockerfile` updated accordingly)
+- [ ] Confirm Paperclip's own install/self-host method (still a commented placeholder in
+      `images/paperclip/Dockerfile`)
+- [ ] Run an actual `docker build` against both Dockerfiles to verify end-to-end (no Docker
+      daemon available in this environment during implementation)
 - [ ] `documentation/architectual-decisions-record.md` — FR-016's base-image-layering decision
       still not recorded there
 - [ ] `user-docs/` guides — deferred to Step 4 of the dev-flow pipeline
 
 ## Blockers
 
-None currently. Three tool-install commands (Hermes, OMP, Paperclip) are documented as
-swarm-owner-editable defaults rather than hard-verified — not a blocker per explicit user
-direction, but worth confirming when the background research agent reports back.
+None currently. Paperclip's own install/self-host method remains an unconfirmed, swarm-owner-
+editable default in `images/paperclip/Dockerfile`. A real `docker build` test is still owed once
+a Docker daemon is available.
 
 ## Recent Activity
 
@@ -84,6 +87,8 @@ direction, but worth confirming when the background research agent reports back.
 - 2026-09-27: Step 3 (Implement Product) started — Dockerfiles, entrypoint/bootstrap scripts,
   CI/CD workflow, and configuration-docs (credentials, GitHub PAT, deployment examples for all
   three targets) written. Resolved the AWS Secrets Manager path convention and macOS
-  persistent-storage recipe open questions. Exact install commands for Hermes/OMP/Paperclip left
-  as swarm-owner-editable Dockerfile defaults per explicit user direction, pending confirmation
-  from a background research agent.
+  persistent-storage recipe open questions.
+- 2026-09-27: Background research verified the exact install commands for Hermes, OMP, and
+  OpenCode CLI against each tool's actual install script; `images/harness/Dockerfile` updated
+  accordingly. Paperclip's own install method remains an unconfirmed, swarm-owner-editable
+  default.

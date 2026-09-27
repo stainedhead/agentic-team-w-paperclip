@@ -20,6 +20,13 @@ implementation — not a plan restated. Update this file as work happens, not af
   are swarm-owner-editable defaults, not something this product hard-verifies or blocks the build
   on. Where a command isn't yet confirmed from the tool's own docs, the Dockerfile carries a
   comment marking it as a default pending confirmation, not a hard build failure.
+- **Hermes/OMP/OpenCode CLI install commands verified 2026-09-27** by fetching each tool's actual
+  install script (not just doc summaries) — `images/harness/Dockerfile` uses the confirmed
+  commands. Paperclip's own install/self-host method is still unconfirmed (out of scope for that
+  research pass) and remains a commented placeholder in `images/paperclip/Dockerfile`.
+- No Docker daemon was available in this environment to actually run `docker build` against
+  either Dockerfile — the install commands are sourced from each tool's real script, but the
+  build itself is unverified end-to-end. Flagged in `research.md`'s Open Questions.
 
 ## Edge Cases & Solutions
 
