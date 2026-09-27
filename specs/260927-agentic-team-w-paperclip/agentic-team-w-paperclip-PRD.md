@@ -141,6 +141,22 @@ the local `.env` approach and the AWS Secrets Manager approach — under `config
 target (macOS `Container`, ECS Fargate, EKS), but shall not itself automate deployment into a
 swarm owner's environment — that step is performed by the swarm owner.
 
+**FR-033:** Documentation shall be provided for configuring GitHub CLI (`gh`) authentication
+(Personal Access Token) for a harness instance. This is the actual configuration surface for
+GitHub interaction (Projects and/or Issues) regardless of whether it's exercised through
+Paperclip's own GitHub connector or an agent's direct use of `gh` — this product documents the
+credential setup, not a specific GitHub Projects/Issues integration mechanism (see the scope note
+below).
+
+**Scope note — GitHub integration mechanism (FR-011, FR-013, FR-014, FR-033):** Research (see the
+spec's `research.md`) found Paperclip's real GitHub connector syncs GitHub Issues (single-repo)
+via a documented comment/@mention flow; no documentation was found for a GitHub Projects
+(cross-repo board) integration specifically. The product intent remains GitHub Projects, since it
+isn't scoped to a single repo the way Issues is — but this PRD does not commit to *how* Paperclip
+or an agent accesses Projects internally. The concrete, buildable deliverable is FR-033: `gh` CLI
++ PAT configuration documentation, so that whichever mechanism ends up being used has working
+authentication.
+
 ## Non-Functional Requirements
 
 - **Observability:** Supported on all deployment platforms (macOS `Container`, ECS Fargate,
@@ -153,6 +169,18 @@ swarm owner's environment — that step is performed by the swarm owner.
   responsibility is to ship preconfigured containers/images that expose the necessary
   configuration surface; the swarm owner sets the actual performance and reliability posture at
   deployment/configuration time for their environment.
+
+## Scope Boundary: Tool-Internal Behavior
+
+Hermes, OMP, OpenCode CLI, and Paperclip are existing, mature tools (confirmed real via research
+— see the spec's `research.md`: Hermes = Nous Research's Hermes Agent, OMP = oh-my-pi, OpenCode
+CLI = opencode.ai, Paperclip = paperclip.ing) — this product configures and containerizes them;
+it does not reimplement or override their runtime behavior. Out of scope: poll-failure
+retry/backoff, duplicate agent-identity handling, invalid/expired-credential behavior at runtime,
+and corrupted-state recovery — all owned by the respective tool. In scope: mounting persistent
+storage where each tool expects it, supplying credentials the way each tool expects to receive
+them (FR-027/FR-028), and bootstrapping only the configuration this product itself introduces
+(FR-025/FR-026).
 
 ## Acceptance Criteria
 
@@ -212,14 +240,19 @@ swarm owner's environment — that step is performed by the swarm owner.
 - [ ] CI/CD supports cutting a GitHub Release for the product.
 - [ ] Deployment examples/documentation exist for macOS `Container`, ECS Fargate, and EKS,
       without the product itself automating deployment into any of them.
+- [ ] `configuration-docs/` contains documentation for configuring `gh` CLI authentication (PAT)
+      on a harness instance.
 
 ## Dependencies and Risks
 
 | Item | Type | Notes |
 |------|------|-------|
-| Paperclip (orchestrator) | Dependency | Central coordination plane; monitors assignment sources and tracks assignments, which harnesses retrieve by polling. |
-| Jira API | Dependency | Used for polling assigned work, fetching detail, and closing tickets. |
-| GitHub Projects API | Dependency | Used for polling assigned work and fetching detail. |
+| Hermes = Nous Research's Hermes Agent ([github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)) | Dependency | Confirmed 2026-09-27 via research: real built-in cron scheduler, YAML config at `~/.hermes/config.yaml`, generic shell/subprocess tool access (not a named "invoke OpenCode" feature). |
+| OMP = oh-my-pi ([omp.sh](https://omp.sh/docs/cli)) | Dependency | Confirmed 2026-09-27: terminal coding agent, 60+ model providers, YAML config. Install method not confirmed from docs fetched — verify before implementation. |
+| OpenCode CLI ([opencode.ai/docs/cli](https://opencode.ai/docs/cli/)) | Dependency | Confirmed 2026-09-27: install via curl/npm/pnpm/bun/brew, non-interactive via `opencode run`/`opencode serve`. |
+| Paperclip ([paperclip.ing](https://paperclip.ing/), [github.com/paperclipai/paperclip](https://github.com/paperclipai/paperclip)) | Dependency | Confirmed 2026-09-27: agent registration and work-retrieval both have real CLI/API surfaces; auth via Agent API keys (Bearer). |
+| Jira API | Dependency | Paperclip's real Jira connector is OAuth, Atlassian Cloud only, covers issues + Confluence. Used for querying assigned work, fetching detail, and closing tickets. |
+| GitHub (Projects intent; connector confirmed for Issues only) | Dependency | See "Scope note — GitHub integration mechanism" above. |
 | AWS Bedrock | Dependency | One of five configurable model hosts. |
 | Ollama Cloud | Dependency | One of five configurable model hosts. |
 | OpenRouter | Dependency | One of five configurable model hosts. |
@@ -232,7 +265,9 @@ swarm owner's environment — that step is performed by the swarm owner.
 | GHCR (GitHub Container Registry) | Dependency | Publish target for both container image variants (FR-030). |
 | GitHub Releases | Dependency | Release mechanism for the product (FR-031). |
 | Local-mode architecture undesigned | Risk | Carried over from `INTENT.md`; this PRD decides the local container runtime (macOS `Container`) but not the full local architecture (networking, service discovery, identity store, etc.) equivalent to the AWS design. |
-| Credential sprawl | Risk | Each harness instance may hold credentials for a model host, an auth identity, and potentially Jira/GitHub — increases surface area for credential management/rotation. |
+| Credential sprawl | Risk | Each harness instance may hold credentials for a model host, an auth identity, a Paperclip Agent API key, a Jira OAuth grant, and a GitHub PAT — increases surface area for credential management/rotation. |
+| OMP install method unverified | Risk | omp.sh's CLI reference page didn't document the install method directly — confirm before implementation. |
+| Paperclip GitHub Projects support unconfirmed | Risk | Paperclip's documented GitHub connector covers Issues; no documented Projects-specific sync was found. Mitigated by narrowing this product's deliverable to `gh` CLI/PAT configuration (FR-033). |
 
 ## Open Questions
 
@@ -243,3 +278,11 @@ swarm owner's environment — that step is performed by the swarm owner.
   networking/service-discovery/identity-store design (equivalent in depth to the AWS design in
   `documentation/technical-architecture.md`) is out of scope — that's the swarm owner's concern
   for their own environment.
+- **AWS Secrets Manager path convention**: should model-host, auth-identity, Paperclip Agent API
+  key, and GitHub PAT credentials reuse the existing per-agent path scheme from
+  `documentation/architectual-decisions-record.md` (ADR-0002), or does each need its own
+  convention? Not yet decided.
+- **OMP install method**: not confirmed from the documentation fetched during research — verify
+  directly before implementation.
+- **Paperclip native GitHub Projects support**: untracked/out of scope for this product either
+  way (see FR-033's scope note) — noted here only so it isn't mistaken for a resolved question.
