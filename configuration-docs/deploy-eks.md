@@ -53,14 +53,19 @@ A private GHCR package needs an `imagePullSecret` in the target namespace.
 
 ## Getting the first configuration onto the volume
 
-A fresh PVC is empty, so the first pod start writes the default `instance.yaml` and runs with it,
-which does nothing useful until filled in. Options, best first:
+A fresh PVC is empty, so a pod starting against one would write the default `instance.yaml` and run
+with it — which does nothing useful until filled in.
 
-- **Pre-seed via a ConfigMap and an init container** that copies it to `/data/instance.yaml` if absent
-  — this keeps each agent's configuration in your manifests, under version control, and makes the pod
-  reproducible from nothing.
-- `kubectl exec` into the running pod and edit in place, then restart. Fine for experimentation;
-  it leaves no record of what the instance is configured to do.
+**The template handles this**: it ships a `ConfigMap` holding the instance's `instance.yaml` and an
+init container that copies it onto the volume if the file is absent. The copy is guarded by
+`[ -f /data/instance.yaml ] ||`, so it is a no-op on every later start and never overwrites a
+configuration you have since changed on the volume. This keeps each agent's configuration in your
+manifests, under version control, and makes the pod reproducible from nothing.
+
+The alternative is to delete the ConfigMap and init container, let the container bootstrap its own
+default, then `kubectl exec` in to edit it and restart. That is fine for experimentation, but it
+leaves no record of what the instance is configured to do — prefer the ConfigMap for anything you
+intend to keep.
 
 ## Namespacing the fleet
 

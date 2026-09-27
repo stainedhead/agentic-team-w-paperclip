@@ -14,7 +14,7 @@ replaced them**; none of these files should ever hold a real credential value.
 | [`instance/techlead-multi-persona.yaml`](instance/techlead-multi-persona.yaml) | Two personas, OpenRouter-backed, custom poll schedule. |
 | [`macos-container/run-instance.sh`](macos-container/run-instance.sh) | Create the data volume and start an instance under macOS `container`. |
 | [`aws-ecs/task-definition.json`](aws-ecs/task-definition.json) | ECS Fargate task definition with EFS at `/data` and Secrets Manager wiring. |
-| [`aws-eks/deployment.yaml`](aws-eks/deployment.yaml) | EKS `PersistentVolumeClaim` + `Deployment` with a Secrets Store CSI mount. |
+| [`aws-eks/deployment.yaml`](aws-eks/deployment.yaml) | EKS `PersistentVolumeClaim`, `SecretProviderClass`, a `ConfigMap`+init container that seeds `instance.yaml`, and the `Deployment`. |
 
 ## How the pieces relate
 

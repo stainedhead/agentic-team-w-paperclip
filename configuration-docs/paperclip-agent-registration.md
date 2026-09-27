@@ -46,6 +46,13 @@ Registration is where you obtain the instance's **Agent API key** — a long-liv
 intended for exactly this out-of-band/CLI use (Paperclip also issues short-lived run JWTs for
 in-heartbeat calls and session cookies for the UI; neither is what an instance needs).
 
+> **Honest gap:** exactly where that key is surfaced — which screen, or which field of the CLI's
+> response — is Paperclip's own UI/API surface and is not documented here, because it is not ours to
+> pin down and would go stale. Expect to find it in the agent's detail view after creating it, or in
+> the `agent create` response. If it is not obvious, Paperclip's
+> [API documentation](https://docs.paperclip.ing/reference/api/overview/) is the authority, not this
+> page.
+
 Supply it to the instance as a credential like any other — never in `instance.yaml` itself:
 
 ```yaml

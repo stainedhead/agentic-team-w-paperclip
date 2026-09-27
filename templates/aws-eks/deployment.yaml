@@ -56,6 +56,32 @@ spec:
         - objectName: "github-pat"
           key: GITHUB_PAT
 ---
+# The instance's own configuration, kept in version control rather than hand-edited inside a running
+# pod. The init container below copies it onto the volume on first start, which is what makes the pod
+# reproducible from nothing.
+#
+# Prefer this over `kubectl exec`-ing in to edit the file: it leaves a record of what each agent is
+# configured to do. If you would rather let the container bootstrap its own default and edit in place,
+# delete this ConfigMap and the initContainers block that consumes it.
+#
+# Field reference: user-docs/configuration-reference.md
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: REPLACE-agent-name-instance-config
+data:
+  instance.yaml: |
+    personas: [Reviewer]
+    model_host:
+      provider: anthropic
+      credentials_ref: MODEL_HOST_API_KEY
+    paperclip:
+      agent_id: REPLACE-agent-name
+      api_key_ref: PAPERCLIP_AGENT_API_KEY
+      poll_schedule: ""
+    identity:
+      github_bot_account_ref: GITHUB_PAT
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -87,6 +113,22 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
+      # Seeds instance.yaml onto the volume the first time only. `[ -f ] ||` makes it a no-op on every
+      # later start, so a configuration you have since edited on the volume is never overwritten —
+      # matching the container's own bootstrap behavior. Remove this block if you delete the ConfigMap.
+      initContainers:
+        - name: seed-instance-config
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - '[ -f /data/instance.yaml ] || cp /seed/instance.yaml /data/instance.yaml'
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: instance-config
+              mountPath: /seed
+              readOnly: true
       containers:
         - name: agent
           # Swap for .../paperclip:latest to host Paperclip here too, and raise the resources below.
@@ -122,6 +164,9 @@ spec:
             readOnly: true
             volumeAttributes:
               secretProviderClass: REPLACE-agent-name-secrets
+        - name: instance-config
+          configMap:
+            name: REPLACE-agent-name-instance-config
 ---
 # For the harness+Paperclip variant, expose the Paperclip UI/API in-cluster. Not needed for a
 # harness-only instance, which serves nothing.

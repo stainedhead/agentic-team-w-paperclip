@@ -173,9 +173,14 @@ Two image variants are published:
 The images have never been built by a Docker daemon. They were written and reviewed statically,
 because no daemon was available in the environment they were authored in. The CI workflow now
 includes a **`smoke-build` job** that builds both images single-arch, runs them, and asserts that
-every tool is on `PATH` after the non-root privilege drop and that the `instance.yaml` bootstrap
-works — so the first CI run is what will confirm or refute this. Treat the images as unverified
-until that job has passed once.
+the container comes up as uid 1000, that every tool is on `PATH` after the non-root privilege drop,
+and that the `instance.yaml` bootstrap writes its files — so the first CI run is what will confirm
+or refute this. Treat the images as unverified until that job has passed once.
+
+What `smoke-build` does **not** cover: it runs with no volume mounted, so it exercises the image's
+own `/data` directory rather than a real bind mount, PVC or EFS access point. Whether *your* volume
+is writable by uid 1000 is the most common real deployment failure and only your deployment can
+prove it — each `configuration-docs/deploy-*.md` says what to set.
 
 Two things that job is specifically expected to settle:
 - whether each installer's binaries remain reachable after the image drops to the `agent` user;

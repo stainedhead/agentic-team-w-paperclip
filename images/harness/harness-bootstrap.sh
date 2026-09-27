@@ -57,6 +57,15 @@ GITHUB_BOT_REF="$(read_cfg '.identity.github_bot_account_ref')"
 resolve_ref() {
   local ref_name="$1" label="$2" value
   [ -n "${ref_name}" ] || return 0
+  # Validate before dereferencing. `${!name}` on something that isn't a valid identifier is a "bad
+  # substitution" in some bash versions and silently empty in others, so check explicitly rather
+  # than depending on which bash the base image happens to ship. This catches the mistake of putting
+  # a credential *value* (or a `$VAR` expression) in a *_ref field instead of a variable name.
+  if [[ ! "${ref_name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    echo "[bootstrap] WARNING: ${label} is '${ref_name}', which is not a valid environment variable" \
+         "name — these fields name a variable, they do not hold its value. Ignoring it." >&2
+    return 0
+  fi
   value="${!ref_name:-}"
   if [ -z "${value}" ]; then
     echo "[bootstrap] WARNING: ${label} references '${ref_name}', but no such variable is set in" \
