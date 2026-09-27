@@ -4,10 +4,52 @@
 > `../initial-context.md` is the frozen originating draft — where the two differ, this file wins.
 
 ## Status
-The design below covers the AWS-hosted deployment only. It's a design draft, not yet built.
-Local-mode architecture is undesigned (see "Open questions" below and [INTENT.md](../INTENT.md)).
+Sections 1-6 below are the original target enterprise design (Okta SSO, Aurora Serverless,
+ALB/API Gateway ingress, Cloud Map service discovery) — design intent, still **not built**.
+Section 0 describes what has actually been built so far, from
+`specs/archive/260927-agentic-team-w-paperclip/` and its code-review fix pass in
+`specs/archive/260927-agentic-team-w-paperclip-auto-review/`: two container images, CI/CD to
+GHCR, and configuration documentation. Where they conflict, Section 0 is what's real today. None
+of it has been verified with a real `docker build`/`run` yet (see README.md's Status section).
 
-## 1. Platform layers
+## 0. What's actually built (first shipped feature)
+
+- **Two container images** (`images/harness/`, `images/paperclip/`) — the harness-only image
+  installs Hermes (Nous Research Hermes Agent), OMP (oh-my-pi), and OpenCode CLI via each tool's
+  own verified install script, and runs Hermes on startup; the harness+Paperclip image is built
+  `FROM` the harness image (see ADR-0006) and runs both Hermes and Paperclip.
+- **CI/CD** (`.github/workflows/build-and-publish.yml`) lints (shellcheck, hadolint), then builds
+  both images for `linux/amd64` and `linux/arm64` and publishes to GHCR, pinning the
+  harness+Paperclip image's base by digest; reacts to a published GitHub Release by tagging
+  images with its semver.
+- **Both images run as a non-root user** (UID/GID 1000:1000), not root, though this hasn't been
+  verified with a real `docker build`/`run` — see the Status note above.
+- **Paperclip itself is started via `npx paperclipai onboard --yes` (first boot) or
+  `npx paperclipai run` (subsequent boots)** — not a bare `paperclip` binary — with its data
+  directory (`PAPERCLIP_HOME`) pointed at the same `/data` persistent volume as `instance.yaml`.
+  It requires two boot-time secrets (`BETTER_AUTH_SECRET`,
+  `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET`) and uses an embedded PostgreSQL by default (no external
+  `DATABASE_URL` needed) — see `configuration-docs/credentials-and-secrets.md`.
+- **This product's own configuration surface**: a single `/data/instance.yaml` file per instance
+  (persona assignment, model-host selection, credential references — see ADR-0008), bootstrapped
+  from a default template on first start and reused thereafter, on a persistent-storage volume
+  the swarm owner provides.
+- **Work retrieval**: a Hermes cron job (default: every 5 minutes) calls Paperclip's own
+  `agent inbox-mine` CLI (see ADR-0007) — not custom polling code.
+- **Credentials**: never embedded in `instance.yaml`; resolved from the container's own
+  environment (a `.env` file locally, AWS Secrets Manager as injected env vars in AWS) — see
+  `configuration-docs/credentials-and-secrets.md`.
+- **Deployment**: documented, not automated — example recipes exist for macOS `Container`, ECS
+  Fargate, and EKS in `configuration-docs/deploy-*.md`. None of the Okta/Aurora/ALB/Cloud Map
+  infrastructure in sections 1-6 below is part of this build.
+- **Explicitly not this product's concern**: tool-internal failure behavior (poll retries,
+  credential-failure handling, cron internals) — each tool owns its own; see
+  `specs/archive/260927-agentic-team-w-paperclip/spec.md`'s Edge Case Handling section.
+
+Full requirements traceability: `specs/archive/260927-agentic-team-w-paperclip/spec.md` and its sibling
+`architecture.md`/`research.md`.
+
+## 1. Platform layers (target design, not yet built)
 - **Orchestration & Collaboration Plane**: a centralized Paperclip AI instance (ECS Fargate)
   managing org structure, agent heartbeats, project graphs, budgets, and developer collaboration.
   Runs the Paperclip AI Core Engine plus embedded Hermes & OpenCode CLI tooling. State store:
@@ -79,5 +121,7 @@ Gateway, Aurora Serverless v2, ALB, EFS Elastic IOPS) is amortized across the fl
 `../initial-context.md` §6 for the line-item breakdown.
 
 ## Open questions
-- **Local-mode architecture**: undesigned. No source material yet describes what running
-  "locally" means for this platform, or what (if anything) is shared with the AWS design above.
+- **Full local networking/service-discovery/identity-store design** equivalent to sections 1-6
+  above remains out of scope for this product (the swarm owner's concern for their own local
+  environment) — only the container + persistent-storage piece (Section 0) is this product's to
+  build. See `documentation/architectual-decisions-record.md`'s "Open (not decided)" section.

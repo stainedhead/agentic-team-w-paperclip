@@ -1,31 +1,48 @@
 # Product Details
 
-> Scope note: everything below reflects the AWS-hosted design drafted in `../initial-context.md`.
-> Local-mode is not yet designed (see [INTENT.md](../INTENT.md)).
+> Scope note: this reflects what has actually been built as of the
+> `specs/archive/260927-agentic-team-w-paperclip/` feature (see its `spec.md` for full requirements
+> traceability). The original `../initial-context.md` AWS enterprise draft (Okta SSO, worktree
+> review dashboard, budget/token-burn UI) was the starting *intent*, not what's built — those
+> pieces remain undesigned/unbuilt unless a future feature adds them.
 
 ## Components
-- **Orchestration & Collaboration Plane** — a Paperclip AI instance that manages organization
-  structure, agent heartbeats, project graphs, budgets, and developer collaboration.
-- **Worker Fleet** — long-running agent workers, each running a distinct persona (e.g. Security
-  Auditor, Database Architect, QA Automation), built on a shared runtime toolchain: Hermes,
-  OpenCode CLI, and OMP.
+- **Two container images** (built and published to GHCR by this product's CI/CD):
+  - **Harness-only image** (`images/harness/`): installs Hermes (Nous Research Hermes Agent), OMP
+    (oh-my-pi), and OpenCode CLI; runs Hermes on startup as the default, always-on harness.
+  - **Harness-plus-Paperclip image** (`images/paperclip/`): built `FROM` the harness-only image;
+    adds Paperclip; runs both Hermes and Paperclip on startup.
+- **Personas**: CTO, Architect, TechLead, Reviewer, Intern, DevSupport, Researcher, Librarian. A
+  harness instance can be configured to run one or more of them, via `/data/instance.yaml`.
+- **Paperclip** — a real, existing orchestration platform (not built by this product) that
+  maintains a roster of registered agents and tracks work sourced from Jira and GitHub, alongside
+  its own native work items.
 
-## Developer-facing workflow
-- Developers authenticate via Okta SSO and use a Paperclip web dashboard.
-- Developers can review active worktrees, view agent budget/token burn rates, assign new issues,
-  and invoke specific personas via `@agent-name`.
-- Paperclip dispatches context to the addressed worker over private service discovery and
-  orchestrates downstream review loops with other worker agents.
+## How a harness instance gets its work
+- A swarm owner configures a harness instance locally (`/data/instance.yaml`: persona(s),
+  model-host selection, credential references) and separately registers that instance's agent
+  identity and persona/role with Paperclip.
+- Once running, the instance's Hermes cron scheduler polls Paperclip on a recurring schedule
+  (`paperclipai agent inbox-mine`) to retrieve assigned work — a pull model, not Paperclip pushing
+  to the instance.
+- Agents can query Jira or GitHub directly for extra detail on an assigned item, and update those
+  systems as part of completing work (e.g. closing a Jira ticket) — but always also update
+  Paperclip's own tracking state, which remains the system of record.
 
-## Isolation model
-- Each worker persona runs under its own IAM task role, confining the blast radius of anything it
-  executes (e.g. the QA agent cannot reach production data stores; the DB Architect agent cannot
-  modify IAM).
-- Each worker's filesystem access is confined to a dedicated EFS Access Point (its own root
-  directory, enforced POSIX UID/GID and permission mask) — no path traversal into another
-  persona's directory.
-- Credentials (LLM API keys, GitHub App PATs) are scoped by path per agent in AWS Secrets
-  Manager; each task role can only retrieve its own path.
+## Configuration and credentials
+- Locally, credentials are supplied via a `.env` file; in AWS, via AWS Secrets Manager. Either
+  way, `/data/instance.yaml` only ever holds a *reference* (an env var / secret name) to a
+  credential, never the value itself. See `configuration-docs/credentials-and-secrets.md`.
+- See `configuration-docs/github-cli-and-pat.md` for GitHub CLI/PAT configuration, and
+  `configuration-docs/deploy-*.md` for per-target deployment examples (macOS `Container`, ECS
+  Fargate, EKS) — this product documents deployment, it does not automate it.
+
+## What this product explicitly does not do
+- Automate deployment into a swarm owner's environment.
+- Implement or override any of the four tools' own runtime behavior (retries, credential-failure
+  handling, cron internals) — see `spec.md`'s Edge Case Handling scope boundary in the feature
+  spec for the reasoning.
+- Provide real-time monitoring of agent internals, or a billing/chargeback system.
 
 See [technical-architecture.md](technical-architecture.md) for the full technical design and
 [architectual-decisions-record.md](architectual-decisions-record.md) for the reasoning behind

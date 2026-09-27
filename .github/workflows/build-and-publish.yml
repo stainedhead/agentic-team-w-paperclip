@@ -1,0 +1,128 @@
+name: Build and Publish Images
+
+# Builds both container image variants (FR-016) and publishes them to GHCR (FR-030); cuts a
+# GitHub Release when one is published (FR-031). See
+# specs/archive/260927-agentic-team-w-paperclip/architecture.md for why the paperclip image is
+# built FROM the harness image (pinned by digest, not a mutable tag, to avoid a race between the
+# two builds landing on the registry).
+#
+# Trigger note (fix for review finding FR-006): only `push: branches: [main]` and
+# `release: types: [published]` trigger builds — a bare `tags: [...]` push is intentionally NOT a
+# separate trigger, since publishing a release also fires on the tag it's cut from, and having
+# both would double-build/double-publish the same images.
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  HARNESS_IMAGE: ${{ github.repository }}/harness
+  PAPERCLIP_IMAGE: ${{ github.repository }}/paperclip
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  lint:
+    # Fix for review finding FR-005: validate the Dockerfiles and shell scripts before building
+    # images from them — this is exactly the class of bug (a shell logic error, a Dockerfile step
+    # that's a no-op) a linter catches before merge, per the Step 5 code review.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Shellcheck all shell scripts
+        run: |
+          shellcheck images/harness/harness-bootstrap.sh \
+                     images/harness/entrypoint.sh \
+                     images/paperclip/entrypoint.sh
+
+      - name: Hadolint harness Dockerfile
+        uses: hadolint/hadolint-action@v3
+        with:
+          dockerfile: images/harness/Dockerfile
+
+      - name: Hadolint paperclip Dockerfile
+        uses: hadolint/hadolint-action@v3
+        with:
+          dockerfile: images/paperclip/Dockerfile
+
+  build-and-publish:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for linux/arm64 builds — fix for review finding FR-003)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for harness image
+        id: meta-harness
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.HARNESS_IMAGE }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push harness image (multi-arch)
+        id: build-harness
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: images/harness/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta-harness.outputs.tags }}
+          labels: ${{ steps.meta-harness.outputs.labels }}
+
+      - name: Extract metadata for paperclip image
+        id: meta-paperclip
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.PAPERCLIP_IMAGE }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push paperclip image (multi-arch, FROM harness image pinned by digest)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: images/paperclip/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta-paperclip.outputs.tags }}
+          labels: ${{ steps.meta-paperclip.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.HARNESS_IMAGE }}@${{ steps.build-harness.outputs.digest }}
+
+# Note (fix for review finding FR-006/FR-031): there is deliberately no separate "create a
+# release" job here. FR-031 ("CI/CD shall support cutting GitHub Releases") is satisfied by this
+# workflow reacting correctly to a release a maintainer publishes (via the GitHub UI or
+# `gh release create`) — the `release: types: [published]` trigger above builds and semver-tags
+# images for it. A prior version of this workflow also tried to *create* the release from a bare
+# tag push, which both duplicated this job (the FR-006 finding) and was redundant once triggered
+# by `release: published`, since the release already exists by that point.

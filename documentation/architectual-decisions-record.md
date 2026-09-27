@@ -45,6 +45,59 @@ a past entry in place.
 - **Consequences**: Consistent runtime across personas; persona differences are expressed as
   factory parameters (IAM role, EFS access point, secrets path) rather than divergent images.
 
+## ADR-0006: Build the harness+Paperclip image FROM the harness-only image
+- **Status**: Accepted (2026-09-27)
+- **Context**: The product ships two container image variants — harness-only (Hermes, OMP,
+  OpenCode CLI) and harness+Paperclip. Both need the same harness-layer tooling.
+- **Decision**: The harness+Paperclip image's Dockerfile (`images/paperclip/Dockerfile`) uses
+  `FROM ${BASE_IMAGE}` with the harness-only image as the default base, adding only Paperclip and
+  overriding the entrypoint to run both Hermes and Paperclip.
+- **Consequences**: Harness-layer changes (tool versions, `yq`/`gh` install, bootstrap logic)
+  propagate to both variants automatically instead of drifting apart across two independently
+  maintained Dockerfiles. CI pins the FROM relationship by digest (not a mutable tag) to avoid a
+  race between the two builds landing on the registry — see
+  `.github/workflows/build-and-publish.yml`.
+
+## ADR-0007: Implement the Paperclip work-poll as a Hermes cron job calling Paperclip's own CLI
+- **Status**: Accepted (2026-09-27)
+- **Context**: FR-019 requires a harness instance to retrieve its assigned work by polling
+  Paperclip on a recurring schedule. Paperclip's own platform actually supports two mechanisms:
+  a server-initiated heartbeat "wakeup" API, and a pull-style CLI (`agent inbox`/`inbox-mine`).
+- **Decision**: Use Hermes's built-in cron scheduler to run `paperclipai agent inbox-mine
+  --user-id <id> --status todo,in_progress` on a recurring schedule (default every 5 minutes),
+  rather than building custom polling code or wiring up Paperclip's push-based wakeup API.
+- **Consequences**: No custom scheduler/poll logic to build or maintain — the mechanism is
+  entirely "configure two existing tools to call each other." Retry/failure behavior on a missed
+  poll is Hermes's/Paperclip's own concern (see `spec.md`'s Edge Case Handling scope boundary),
+  not something this product implements.
+
+## ADR-0008: A single `instance.yaml` file is this product's own configuration surface
+- **Status**: Accepted (2026-09-27)
+- **Context**: FR-017 requires a swarm owner to configure persona assignment, model-host
+  selection, and identity references per harness instance. None of Hermes, OMP, OpenCode CLI, or
+  Paperclip has a config format for this — it's specific to this product.
+- **Decision**: Introduce `/data/instance.yaml` (on the same persistent-storage volume as
+  FR-024) as the single file for this product's own settings, with `*_ref` fields naming (never
+  containing) credentials. The entrypoint bootstrap applies its values into each tool's own
+  config on startup, rather than duplicating each tool's full native config surface.
+- **Consequences**: One clear place a swarm owner edits for this product's own settings; a
+  slightly more complex entrypoint (translates `instance.yaml` into Hermes/OMP/OpenCode's native
+  config on every start) in exchange for not inventing a broader configuration system.
+
+## ADR-0009: Extend ADR-0002's per-agent Secrets Manager path scheme to all newly-identified credentials
+- **Status**: Accepted (2026-09-27)
+- **Context**: This product's credential set grew beyond ADR-0002's original scope (model-host
+  API keys, a Paperclip Agent API key, a GitHub PAT).
+- **Decision**: Reuse ADR-0002's `/agents/${AGENT_ID}/*` path convention for all of them (e.g.
+  `/agents/${AGENT_ID}/model-host-api-key`, `/agents/${AGENT_ID}/paperclip-agent-api-key`,
+  `/agents/${AGENT_ID}/github-pat`) rather than inventing a separate scheme per credential type.
+- **Consequences**: One consistent convention across the whole credential set; a swarm owner who
+  wants a shared (non-per-agent) credential, such as one model-host key across agents, deviates
+  from this default deliberately rather than the product forcing per-agent secrets everywhere.
+
 ## Open (not decided)
-- Local-mode deployment architecture — not yet designed; see [INTENT.md](../INTENT.md) and
-  [technical-architecture.md](technical-architecture.md).
+- Paperclip's own install/self-host method — see
+  [../specs/archive/260927-agentic-team-w-paperclip/research.md](../specs/archive/260927-agentic-team-w-paperclip/research.md).
+- Full local networking/service-discovery/identity-store design equivalent to the AWS
+  architecture above — narrowed out of scope for this product (the swarm owner's concern for
+  their own local environment); see [INTENT.md](../INTENT.md).

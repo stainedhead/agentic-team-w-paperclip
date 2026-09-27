@@ -1,9 +1,9 @@
 # User Docs
 
-End-user-facing guides for people who *use* the deployed agent fleet — e.g. how a developer
-reviews active worktrees in the Paperclip dashboard, assigns work, or invokes a persona via
-`@agent-name` (see `documentation/product-details.md` for the workflow these guides will cover).
+Guides for people who *use* the deployed agent fleet day to day. For how a swarm owner
+configures and deploys the platform itself, see [configuration-docs/](../configuration-docs/)
+instead.
 
-No guides exist yet — this directory is reserved for them as those workflows are implemented.
-Contrast with `configuration-docs/`, which covers how a swarm owner configures and deploys the
-platform, not how a developer uses it day to day.
+- [getting-started.md](getting-started.md) — run your first harness instance.
+- [configuration-reference.md](configuration-reference.md) — the full `instance.yaml` schema.
+- [usage-examples.md](usage-examples.md) — worked examples for common setups.

@@ -1,0 +1,22 @@
+# Default instance configuration, written to /data/instance.yaml on first start
+# (FR-025) if no configuration already exists there. See
+# specs/archive/260927-agentic-team-w-paperclip/architecture.md for the field reference.
+#
+# Every *_ref field is a name/path used to look up a credential (a .env var name
+# locally, or an AWS Secrets Manager secret name in AWS) — never a raw credential
+# value. See configuration-docs/credentials-and-secrets.md.
+
+personas: []                    # e.g. [Reviewer, TechLead] — one or more of:
+                                 # CTO, Architect, TechLead, Reviewer, Intern,
+                                 # DevSupport, Researcher, Librarian
+
+model_host:
+  provider: ""                  # one of: aws_bedrock | ollama_cloud | openrouter | anthropic | openai
+  credentials_ref: ""           # e.g. MODEL_HOST_API_KEY
+
+paperclip:
+  agent_id: ""                  # must match the agent's registration in Paperclip (FR-018)
+  api_key_ref: ""                # e.g. PAPERCLIP_AGENT_API_KEY
+
+identity:
+  github_bot_account_ref: ""     # e.g. GITHUB_PAT (see configuration-docs/github-cli-and-pat.md)
