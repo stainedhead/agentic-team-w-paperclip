@@ -69,27 +69,43 @@ jobs:
           dockerfile: images/paperclip/Dockerfile
 
   smoke-build:
-    # Single-arch (amd64, no QEMU) build of both images that is loaded locally and actually run,
-    # to verify the things static analysis cannot: that the tool installers succeed, that their
-    # binaries are still on PATH after the image drops to the non-root `agent` user, and that the
-    # instance.yaml bootstrap writes a config to /data. Nothing here is pushed.
+    # Single-arch (amd64, no QEMU) build of both images that is actually run, to verify the things
+    # static analysis cannot: that the tool installers succeed, that their binaries are still on PATH
+    # after the image drops to the non-root agent user, and that the instance.yaml bootstrap writes a
+    # config to /data.
+    #
+    # Images go to a throwaway registry on localhost rather than the daemon's image store, because
+    # buildx runs the build inside its own container and cannot see images `docker load`ed into the
+    # host daemon — so the paperclip build could not resolve the harness image as its base and tried
+    # to pull it from Docker Hub. The registry lives and dies with this job; nothing leaves it.
     needs: lint
     runs-on: ubuntu-latest
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+    env:
+      LOCAL_REGISTRY: localhost:5000
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
+        # network=host lets the builder container reach the registry service on localhost:5000.
+        # BuildKit and the Docker daemon both treat localhost registries as insecure/HTTP by default,
+        # so no extra registry configuration is needed.
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
 
-      - name: Build harness image (amd64, local only)
+      - name: Build harness image (amd64, to the local registry)
         uses: docker/build-push-action@v6
         with:
           context: images/harness
           platforms: linux/amd64
-          push: false
-          load: true
-          tags: harness:smoke
+          push: true
+          tags: ${{ env.LOCAL_REGISTRY }}/harness:smoke
           cache-from: type=gha,scope=harness
           cache-to: type=gha,scope=harness,mode=max
 
@@ -98,7 +114,7 @@ jobs:
           set -euo pipefail
           # Runs as the image's own USER (agent) with the image's own ENV, so this checks the
           # post-privilege-drop PATH, not root's.
-          docker run --rm --entrypoint /bin/bash harness:smoke -c '
+          docker run --rm --entrypoint /bin/bash "${LOCAL_REGISTRY}/harness:smoke" -c '
             set -euo pipefail
             echo "whoami=$(whoami) uid=$(id -u) HOME=${HOME}"
             [ "$(id -u)" = "1000" ] || { echo "FAIL: image is not running as uid 1000"; exit 1; }
@@ -118,7 +134,7 @@ jobs:
           # Source the bootstrap directly rather than running the entrypoint, which would exec
           # into the Hermes gateway and block. The default template has an empty paperclip.agent_id,
           # so the cron-create branch is correctly skipped.
-          docker run --rm --entrypoint /bin/bash harness:smoke -c '
+          docker run --rm --entrypoint /bin/bash "${LOCAL_REGISTRY}/harness:smoke" -c '
             set -euo pipefail
             source /opt/agentic-team/harness-bootstrap.sh
             test -f /data/instance.yaml || { echo "FAIL: /data/instance.yaml was not bootstrapped"; exit 1; }
@@ -127,16 +143,15 @@ jobs:
             echo "ok: wrote ${HOME}/.hermes/.env"
           '
 
-      - name: Build paperclip image (amd64, local only, FROM the image just built)
+      - name: Build paperclip image (amd64, FROM the harness image just built)
         uses: docker/build-push-action@v6
         with:
           context: images/paperclip
           platforms: linux/amd64
-          push: false
-          load: true
-          tags: paperclip:smoke
+          push: true
+          tags: ${{ env.LOCAL_REGISTRY }}/paperclip:smoke
           build-args: |
-            BASE_IMAGE=harness:smoke
+            BASE_IMAGE=${{ env.LOCAL_REGISTRY }}/harness:smoke
           cache-from: type=gha,scope=paperclip
           cache-to: type=gha,scope=paperclip,mode=max
 
@@ -147,7 +162,7 @@ jobs:
           # so the entrypoint fails fast without it. Whether paperclip.ing/install.sh brings its own
           # Node is not documented upstream — this step is what answers that, at build time rather
           # than at a swarm owner's deploy time. If it fails, add Node to images/paperclip/Dockerfile.
-          docker run --rm --entrypoint /bin/bash paperclip:smoke -c '
+          docker run --rm --entrypoint /bin/bash "${LOCAL_REGISTRY}/paperclip:smoke" -c '
             set -euo pipefail
             [ "$(id -u)" = "1000" ] || { echo "FAIL: image is not running as uid 1000"; exit 1; }
             for tool in hermes omp opencode openssl; do
