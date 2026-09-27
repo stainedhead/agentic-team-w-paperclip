@@ -97,7 +97,7 @@ a past entry in place.
 
 ## Open (not decided)
 - Paperclip's own install/self-host method — see
-  [../specs/260927-agentic-team-w-paperclip/research.md](../specs/260927-agentic-team-w-paperclip/research.md).
+  [../specs/archive/260927-agentic-team-w-paperclip/research.md](../specs/archive/260927-agentic-team-w-paperclip/research.md).
 - Full local networking/service-discovery/identity-store design equivalent to the AWS
   architecture above — narrowed out of scope for this product (the swarm owner's concern for
   their own local environment); see [INTENT.md](../INTENT.md).

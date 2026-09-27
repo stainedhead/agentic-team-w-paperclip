@@ -30,7 +30,7 @@ Set `identity.github_bot_account_ref: GITHUB_PAT` in `/data/instance.yaml`.
 
 Store the PAT as an AWS Secrets Manager secret and reference it the same way as other AWS
 credentials (see `credentials-and-secrets.md`'s AWS section — exact path convention is still
-being decided, see `specs/260927-agentic-team-w-paperclip/research.md`).
+being decided, see `specs/archive/260927-agentic-team-w-paperclip/research.md`).
 
 ## Verifying it works
 

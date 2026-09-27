@@ -4,7 +4,7 @@
 **Jira:** N/A
 **Status:** Draft
 **Source:** Review of `feat/agentic-team-w-paperclip` vs `main`
-(`specs/260927-agentic-team-w-paperclip/`)
+(`specs/archive/260927-agentic-team-w-paperclip/`)
 
 ## Executive Summary
 
@@ -33,7 +33,7 @@ and unverified `hermes cron create` idempotency.
 ## Non-Goals
 
 - Redesigning the instance-config schema, the poll mechanism, or any other decision already made
-  in `specs/260927-agentic-team-w-paperclip/architecture.md` — this pass fixes bugs in the
+  in `specs/archive/260927-agentic-team-w-paperclip/architecture.md` — this pass fixes bugs in the
   existing design, it doesn't re-litigate the design.
 - Confirming Paperclip's own install/self-host method beyond "something that actually runs" —
   the exact command remains a swarm-owner-editable default per prior direction; FR-002 only
@@ -184,7 +184,7 @@ confirmed.
 - **`hadolint` availability**: does the CI runner need an explicit install step, or should
   `hadolint`'s own Docker-based GitHub Action be used instead? Affects how FR-005 is implemented.
 - **Paperclip's actual install/self-host command**: still unconfirmed (see
-  `specs/260927-agentic-team-w-paperclip/research.md`'s Open Questions) — FR-002 works around
+  `specs/archive/260927-agentic-team-w-paperclip/research.md`'s Open Questions) — FR-002 works around
   this by requiring *a* default plus loud failure, not the confirmed-correct command.
 
 ## Notes

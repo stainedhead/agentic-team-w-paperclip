@@ -7,7 +7,7 @@
 Sections 1-6 below are the original target enterprise design (Okta SSO, Aurora Serverless,
 ALB/API Gateway ingress, Cloud Map service discovery) — design intent, still **not built**.
 Section 0 describes what has actually been built so far, from
-`specs/260927-agentic-team-w-paperclip/`: two container images, CI/CD to GHCR, and configuration
+`specs/archive/260927-agentic-team-w-paperclip/`: two container images, CI/CD to GHCR, and configuration
 documentation. Where they conflict, Section 0 is what's real today.
 
 ## 0. What's actually built (first shipped feature)
@@ -32,9 +32,9 @@ documentation. Where they conflict, Section 0 is what's real today.
   infrastructure in sections 1-6 below is part of this build.
 - **Explicitly not this product's concern**: tool-internal failure behavior (poll retries,
   credential-failure handling, cron internals) — each tool owns its own; see
-  `specs/260927-agentic-team-w-paperclip/spec.md`'s Edge Case Handling section.
+  `specs/archive/260927-agentic-team-w-paperclip/spec.md`'s Edge Case Handling section.
 
-Full requirements traceability: `specs/260927-agentic-team-w-paperclip/spec.md` and its sibling
+Full requirements traceability: `specs/archive/260927-agentic-team-w-paperclip/spec.md` and its sibling
 `architecture.md`/`research.md`.
 
 ## 1. Platform layers (target design, not yet built)

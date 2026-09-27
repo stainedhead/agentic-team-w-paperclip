@@ -1,7 +1,7 @@
 # Product Details
 
 > Scope note: this reflects what has actually been built as of the
-> `specs/260927-agentic-team-w-paperclip/` feature (see its `spec.md` for full requirements
+> `specs/archive/260927-agentic-team-w-paperclip/` feature (see its `spec.md` for full requirements
 > traceability). The original `../initial-context.md` AWS enterprise draft (Okta SSO, worktree
 > review dashboard, budget/token-burn UI) was the starting *intent*, not what's built — those
 > pieces remain undesigned/unbuilt unless a future feature adds them.

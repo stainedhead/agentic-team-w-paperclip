@@ -45,7 +45,7 @@ edits are reused, not overwritten (that's the point of the persistent volume).
 ## 5. Register the agent with Paperclip
 
 Registering the instance's identity and persona/role in Paperclip is a separate step from
-container configuration — see `specs/260927-agentic-team-w-paperclip/research.md` for the
+container configuration — see `specs/archive/260927-agentic-team-w-paperclip/research.md` for the
 `paperclipai agent create`/`agent hire` commands. Once registered, the instance's Hermes cron
 job (running every 5 minutes by default) starts retrieving assigned work automatically — no
 further steps needed.
@@ -60,4 +60,4 @@ container logs my-agent                                  # watch Hermes's own lo
 
 (There may also be a `hermes cron list`-style command for this — check Hermes's own CLI help;
 the jobs file above is the one path confirmed directly from research, see
-`specs/260927-agentic-team-w-paperclip/research.md`.)
+`specs/archive/260927-agentic-team-w-paperclip/research.md`.)

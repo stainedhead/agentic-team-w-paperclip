@@ -2,7 +2,7 @@ name: Build and Publish Images
 
 # Builds both container image variants (FR-016) and publishes them to GHCR (FR-030); cuts a
 # GitHub Release on a tag push (FR-031). See
-# specs/260927-agentic-team-w-paperclip/architecture.md for why the paperclip image is built
+# specs/archive/260927-agentic-team-w-paperclip/architecture.md for why the paperclip image is built
 # FROM the harness image (pinned by digest, not a mutable tag, to avoid a race between the two
 # builds landing on the registry).
 

@@ -6,7 +6,7 @@ config files (those live at their usual paths inside the container and aren't ma
 
 Bootstrapped from a default template on first start if missing; reused as-is on every start
 after that (including image updates) — see
-`specs/260927-agentic-team-w-paperclip/architecture.md` for the full design rationale.
+`specs/archive/260927-agentic-team-w-paperclip/architecture.md` for the full design rationale.
 
 ## Fields
 
@@ -39,5 +39,5 @@ identity:
   behavior, not where/how it's deployed. See `configuration-docs/deploy-*.md`.
 - The Paperclip-poll schedule itself — currently a fixed default (every 5 minutes) set by the
   image's bootstrap logic, not yet exposed as a field here. See
-  `specs/260927-agentic-team-w-paperclip/architecture.md` if you need to change it (it requires
+  `specs/archive/260927-agentic-team-w-paperclip/architecture.md` if you need to change it (it requires
   editing the entrypoint's `DEFAULT_POLL_CRON`, not `instance.yaml`).

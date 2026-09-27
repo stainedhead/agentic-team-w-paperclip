@@ -2,7 +2,7 @@
 # Shared bootstrap logic, sourced by both images/harness/entrypoint.sh and
 # images/paperclip/entrypoint.sh. Not meant to be run directly.
 #
-# See specs/260927-agentic-team-w-paperclip/architecture.md for the instance.yaml schema and
+# See specs/archive/260927-agentic-team-w-paperclip/architecture.md for the instance.yaml schema and
 # configuration-docs/credentials-and-secrets.md for how *_ref fields resolve to real values.
 set -euo pipefail
 

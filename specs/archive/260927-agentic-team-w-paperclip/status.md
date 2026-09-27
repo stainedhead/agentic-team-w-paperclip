@@ -29,9 +29,9 @@
       product's deliverable to `gh` CLI/PAT configuration docs (FR-033) instead of a specific
       connector guarantee
 - [x] Confirmed GitHub Actions → GHCR → Release is the standard, current CI/CD pattern
-- [ ] AWS Secrets Manager path convention for the full credential set — still open
-- [ ] macOS `Container` persistent-storage recipe — still open
-- [ ] OMP install method — not confirmed from docs fetched, needs direct verification
+- [x] AWS Secrets Manager path convention for the full credential set (ADR-0009)
+- [x] macOS `Container` persistent-storage recipe (`configuration-docs/deploy-macos-container.md`)
+- [x] OMP install method (verified against the actual install script)
 
 ## Phase 2/3 (Data Modeling / Architecture) Task Checklist
 
@@ -40,9 +40,8 @@
 - [x] Poll mechanism decided: Hermes cron job → `paperclipai agent inbox-mine` CLI
 - [x] Image structure decided: `images/harness/Dockerfile`, `images/paperclip/Dockerfile` (FROM
       harness image)
-- [ ] Sequence diagrams — not yet written
-- [ ] FR-016's base-image-layering decision still needs recording in
-      `documentation/architectual-decisions-record.md`
+- [ ] Sequence diagrams — not yet written (minor, optional)
+- [x] FR-016's base-image-layering decision recorded (ADR-0006)
 
 ## Phase 4 (Implementation) Task Checklist
 

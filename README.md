@@ -22,7 +22,7 @@ locally (macOS `Container`) or in AWS (ECS Fargate, EKS).
   - [product-details.md](documentation/product-details.md)
   - [technical-architecture.md](documentation/technical-architecture.md)
   - [architectual-decisions-record.md](documentation/architectual-decisions-record.md)
-- [specs/260927-agentic-team-w-paperclip/](specs/260927-agentic-team-w-paperclip/) — the active
+- [specs/archive/260927-agentic-team-w-paperclip/](specs/archive/260927-agentic-team-w-paperclip/) — the active
   feature spec (and source PRD) for this build.
 - [initial-context.md](initial-context.md) — the original AWS architecture draft this project
   started from. Frozen; superseded by `documentation/technical-architecture.md` where they differ.
@@ -31,4 +31,4 @@ locally (macOS `Container`) or in AWS (ECS Fargate, EKS).
 First feature in progress — both container images, CI/CD, and configuration docs are written;
 see [DEV-FLOW-STATUS.md](DEV-FLOW-STATUS.md) for build progress. Not yet independently verified
 with a real `docker build` (no Docker daemon available during initial implementation) — see
-`specs/260927-agentic-team-w-paperclip/status.md` for open items.
+`specs/archive/260927-agentic-team-w-paperclip/status.md` for open items.
