@@ -19,8 +19,14 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Debian moves a point release, with no benefit to a project whose purpose is to be rebuilt
 # downstream. The directive must be the last comment line before the instruction to take effect.
 # hadolint ignore=DL3008
+#
+# libatomic1 is required by the Node.js toolchain that Hermes's own package manager downloads.
+# Without it the install fails part way through with
+#   ✗ node: staged entry failed verification: … libatomic.so.1: cannot open shared object file
+# followed by an unexplained "✗ pm install failed" — confirmed by CI's smoke-build job on the first
+# real build of this image. It is not present in debian:bookworm-slim.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git tar \
+      ca-certificates curl git tar libatomic1 \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
          -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
