@@ -50,7 +50,7 @@ RUN chmod +x harness-bootstrap.sh entrypoint.sh
 # (not write) so those remain reachable after dropping privileges, and add the common path
 # explicitly since ENV PATH persists across layers/runtime while a modified .bashrc would not.
 # UNVERIFIED: no Docker daemon was available to confirm this actually works end-to-end — see
-# specs/260927-agentic-team-w-paperclip-auto-review/implementation-notes.md.
+# specs/archive/260927-agentic-team-w-paperclip-auto-review/implementation-notes.md.
 RUN groupadd -g 1000 agent && useradd -u 1000 -g 1000 -m -d /home/agent -s /bin/bash agent \
     && chmod -R a+rX /root
 # Best-effort copy of whatever dotfiles/config the installers above wrote under /root — kept as

@@ -4,7 +4,7 @@
 **Spec:** specs/archive/260927-agentic-team-w-paperclip/
 **Branch:** feat/agentic-team-w-paperclip
 **Review PRD:** agentic-team-w-paperclip-auto-review-PRD.md (now inside Review Spec below)
-**Review Spec:** specs/260927-agentic-team-w-paperclip-auto-review/
+**Review Spec:** specs/archive/260927-agentic-team-w-paperclip-auto-review/
 **Process Start:** 2026-09-27T18:02:39Z
 **Process End:** —
 **Total Runtime:** —
