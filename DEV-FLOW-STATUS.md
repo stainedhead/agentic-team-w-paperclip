@@ -3,7 +3,8 @@
 **PRD:** agentic-team-w-paperclip-PRD.md
 **Spec:** specs/archive/260927-agentic-team-w-paperclip/
 **Branch:** feat/agentic-team-w-paperclip
-**Review PRD:** agentic-team-w-paperclip-auto-review-PRD.md
+**Review PRD:** agentic-team-w-paperclip-auto-review-PRD.md (now inside Review Spec below)
+**Review Spec:** specs/260927-agentic-team-w-paperclip-auto-review/
 **Process Start:** 2026-09-27T18:02:39Z
 **Process End:** —
 **Total Runtime:** —
@@ -19,8 +20,8 @@
 | 5  | Code and Design Review           | ✅ Complete | 2026-09-27T18:39:24Z | 2026-09-27T18:43:34Z | 4 |
 | 6  | Prepare Review PRD               | ✅ Complete | 2026-09-27T18:43:34Z | 2026-09-27T18:45:17Z | 2 |
 | 7  | Archive Original Spec            | ✅ Complete | 2026-09-27T18:45:17Z | 2026-09-27T18:46:40Z | 1 |
-| 8  | Spec Review Fixes                | 🔄 In Progress | 2026-09-27T18:46:40Z | — | — |
-| 9  | Implement Review Fixes           | ⬜ Pending | — | — | — |
+| 8  | Spec Review Fixes                | ✅ Complete | 2026-09-27T18:46:40Z | 2026-09-27T18:48:37Z | 2 |
+| 9  | Implement Review Fixes           | 🔄 In Progress | 2026-09-27T18:48:37Z | — | — |
 | 10 | Archive Fixes Spec               | ⬜ Pending | — | — | — |
 | 11 | Final Quality Pass               | ⬜ Pending | — | — | — |
 | 12 | Process Analysis Report          | ⬜ Pending | — | — | — |
