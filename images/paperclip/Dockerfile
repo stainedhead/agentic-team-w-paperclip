@@ -8,6 +8,11 @@ FROM ${BASE_IMAGE}
 # install step, then drop privileges again below (FR-004).
 USER root
 
+# openssl is used by entrypoint.sh to generate BETTER_AUTH_SECRET / PAPERCLIP_TOOL_ACTION_SIGNING_SECRET
+# on first boot if the swarm owner didn't supply them — not guaranteed present on the slim base.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 # --- Paperclip -------------------------------------------------------------------------------
 # Official checksum-verified installer. A swarm owner is free to override this for their own
 # build (pinned version, alternate install source, self-hosted fork, etc.).

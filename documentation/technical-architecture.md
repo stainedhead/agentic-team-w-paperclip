@@ -24,6 +24,12 @@ of it has been verified with a real `docker build`/`run` yet (see README.md's St
   images with its semver.
 - **Both images run as a non-root user** (UID/GID 1000:1000), not root, though this hasn't been
   verified with a real `docker build`/`run` — see the Status note above.
+- **Paperclip itself is started via `npx paperclipai onboard --yes` (first boot) or
+  `npx paperclipai run` (subsequent boots)** — not a bare `paperclip` binary — with its data
+  directory (`PAPERCLIP_HOME`) pointed at the same `/data` persistent volume as `instance.yaml`.
+  It requires two boot-time secrets (`BETTER_AUTH_SECRET`,
+  `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET`) and uses an embedded PostgreSQL by default (no external
+  `DATABASE_URL` needed) — see `configuration-docs/credentials-and-secrets.md`.
 - **This product's own configuration surface**: a single `/data/instance.yaml` file per instance
   (persona assignment, model-host selection, credential references — see ADR-0008), bootstrapped
   from a default template on first start and reused thereafter, on a persistent-storage volume

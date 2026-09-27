@@ -67,3 +67,21 @@ environment variable name used as the `*_ref` in `instance.yaml` (e.g.
 swarm owner can change — e.g. a shared model-host key across agents instead of one per agent —
 as long as the mapping into the container's environment still matches the `*_ref` names in
 `instance.yaml`.
+
+## Paperclip's own boot secrets (harness+Paperclip image only)
+
+Verified 2026-09-27 against Paperclip's own `doc/DOCKER.md`: the embedded Paperclip server itself
+(not this product's `instance.yaml`) requires two secrets just to boot —
+`BETTER_AUTH_SECRET` and `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET` — used to sign sessions/tokens,
+so they must stay **stable across restarts** of the same instance, not regenerated each time.
+
+- **Recommended**: supply both directly as environment variables (`.env` locally, Secrets
+  Manager/ECS `secrets` block in AWS — same mechanism as every other credential here), generated
+  once with `openssl rand -hex 32` each.
+- **Fallback**: if not supplied, `images/paperclip/entrypoint.sh` generates them on first boot
+  and persists them to `${PAPERCLIP_HOME}/.generated-secrets.env` (under the same `/data`
+  persistent-storage volume as `instance.yaml`), reusing them on subsequent starts. This works,
+  but means the secret lives only on that instance's volume rather than in the swarm owner's own
+  secret store — prefer supplying them explicitly for anything beyond local experimentation.
+
+No `DATABASE_URL` is needed to boot — Paperclip uses an embedded PostgreSQL by default.
