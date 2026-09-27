@@ -16,6 +16,9 @@ locally or in AWS. See [INTENT.md](INTENT.md) for why; `documentation/` for what
 - `documentation/product-summary.md` — short, pitch-level description of the product.
 - `documentation/product-details.md` — fuller description: components, workflows, isolation model.
 - `documentation/architectual-decisions-record.md` — append-only architectural decision log (ADRs).
+- `configuration-docs/` — how a swarm owner configures and deploys the platform (e.g. credentials/secrets setup).
+- `user-docs/` — how a developer uses the deployed agent fleet day to day.
+- `*-PRD.md` (e.g. `agentic-team-w-paperclip-PRD.md`) — the current product requirements document(s), at repo root.
 
 ## Keeping documentation current
 The files above are the primary context agents use to understand this product — keep them
@@ -28,6 +31,9 @@ from elsewhere rather than restating it):
 | A decision made among alternatives | new ADR entry (append-only — supersede old entries, never edit them in place) |
 | Product scope or feature change | `product-details.md` (touch `product-summary.md` only if the elevator pitch itself changes) |
 | Goal/direction/scope shift | `INTENT.md` |
+| New/changed requirement before it's built | the relevant `*-PRD.md` |
+| How a swarm owner configures/deploys the platform | `configuration-docs/` |
+| How a developer uses the deployed fleet | `user-docs/` |
 | Anything a newcomer needs to get oriented | `README.md` |
 
 ## Current state

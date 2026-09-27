@@ -12,6 +12,11 @@ coordinated by an orchestration/collaboration layer — that runs either locally
   - [product-details.md](documentation/product-details.md)
   - [technical-architecture.md](documentation/technical-architecture.md)
   - [architectual-decisions-record.md](documentation/architectual-decisions-record.md)
+- [configuration-docs/](configuration-docs/) — how a swarm owner configures and deploys the
+  platform (e.g. [credentials-and-secrets.md](configuration-docs/credentials-and-secrets.md)).
+- [user-docs/](user-docs/) — how a developer uses the deployed agent fleet day to day.
+- [agentic-team-w-paperclip-PRD.md](agentic-team-w-paperclip-PRD.md) — the current product
+  requirements document.
 - [initial-context.md](initial-context.md) — the original AWS architecture draft this project
   started from. Frozen; superseded by `documentation/technical-architecture.md` where they differ.
 
