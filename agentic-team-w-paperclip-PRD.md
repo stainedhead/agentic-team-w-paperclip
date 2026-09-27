@@ -236,8 +236,10 @@ swarm owner's environment — that step is performed by the swarm owner.
 
 ## Open Questions
 
-- **Local-mode architecture**: this PRD now specifies that containers need persistent storage
-  (FR-024) and default-config bootstrap behavior (FR-025/FR-026) generically, but the concrete
-  mechanism for the macOS `Container` runtime specifically (e.g. what backs the persistent
-  volume), plus local networking/service discovery/identity store — equivalent in depth to the
-  AWS design in `documentation/technical-architecture.md` — is not yet designed.
+- **Local-mode persistent storage recipe**: narrowed by scope (see the deployment-automation
+  non-goal and FR-032) — since the swarm owner performs actual deployment, this product only owes
+  a documented example/recipe for what backs the persistent volume under the macOS `Container`
+  runtime (FR-024), delivered as part of the macOS `Container` deployment example. A full local
+  networking/service-discovery/identity-store design (equivalent in depth to the AWS design in
+  `documentation/technical-architecture.md`) is out of scope — that's the swarm owner's concern
+  for their own environment.
