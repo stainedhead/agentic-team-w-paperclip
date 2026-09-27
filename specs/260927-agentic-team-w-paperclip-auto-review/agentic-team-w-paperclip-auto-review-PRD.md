@@ -68,23 +68,15 @@ and unverified `hermes cron create` idempotency.
 
 ## Findings
 
-**FR-001 (P0):** `images/harness/harness-bootstrap.sh` shall not exit the entrypoint process when
-an optional `*_ref` field (`paperclip.api_key_ref`, `identity.github_bot_account_ref`) is empty or
-`"null"`.
-- **Current behavior**: lines 33–36 use the pattern `[ -n "$X" ] && [ "$X" != "null" ] && echo
-  ...` as a bare statement. Under `set -euo pipefail`, when the first or second test is false,
-  this compound command's own exit status is non-zero, which is not exempted from `set -e` at the
-  top level (only intermediate commands inside an `if`/`while` condition are exempted) — so the
-  script exits immediately. This reproduces with the **shipped `instance.default.yaml` itself**
-  (`identity.github_bot_account_ref: ""`), meaning the container crashes on its very first boot.
-- **Acceptance criteria**:
-  - [ ] Starting a harness or harness+Paperclip container with the unmodified default
-    `instance.yaml` (as bootstrapped from `instance.default.yaml`) does not exit/crash the
-    entrypoint.
-  - [ ] Leaving `paperclip.api_key_ref` and/or `identity.github_bot_account_ref` blank does not
-    prevent `~/.hermes/.env` from being written with whatever fields *are* present.
-  - [ ] A regression test (shellcheck and/or a scripted smoke test) exists that exercises the
-    bootstrap logic with an instance config missing these optional fields.
+**FR-001 (RETRACTED 2026-09-27 — not a real bug, see `specs/260927-agentic-team-w-paperclip-auto-review/spec.md`
+for the correction):** Originally claimed `images/harness/harness-bootstrap.sh` exits the
+entrypoint whenever an optional `*_ref` field is empty/null.
+- **Correction**: verified by actually running the exact snippet in bash — `set -e` only fires on
+  the *last* command of an AND-OR list failing; a failing non-final element (either `[ ... ]`
+  test here) is exempted regardless of position. Reproduced with the literal snippet and the
+  shipped `instance.default.yaml`'s empty fields: exit code 0, `.env` written correctly. The
+  original finding was based on an incorrect, unverified recollection of bash's `set -e`
+  semantics during the Step 5 review. No fix was needed.
 
 **FR-002 (P0):** `images/paperclip/entrypoint.sh` shall not silently continue when the `paperclip`
 process fails to start.

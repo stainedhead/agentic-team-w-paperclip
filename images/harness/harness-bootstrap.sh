@@ -36,11 +36,18 @@ mkdir -p "${HERMES_HOME}"
     echo "GITHUB_TOKEN=${!GITHUB_BOT_REF:-}"
 } > "${HERMES_HOME}/.env"
 
-# TODO(verify): the exact `hermes cron create` invocation and its idempotency behavior (does it
-# error or no-op if a job with the same schedule/prompt already exists?) needs confirming against
-# Hermes's own docs before this is production-ready — see research.md research question 1.
+POLL_COMMAND="paperclipai agent inbox-mine --user-id ${PAPERCLIP_AGENT_ID:-} --status todo,in_progress"
+CRON_JOBS_FILE="${HERMES_HOME}/cron/jobs.json"
+
+# Fix for review finding FR-007: this runs on every container start, not just the first. Whether
+# `hermes cron create` itself dedupes an identical schedule+command is unconfirmed (see
+# research.md), so guard explicitly by checking the jobs file for the exact command first —
+# avoids accumulating duplicate poll jobs across restarts regardless of Hermes's own behavior.
 if [ "${PAPERCLIP_AGENT_ID}" != "null" ] && [ -n "${PAPERCLIP_AGENT_ID}" ]; then
-  hermes cron create "${DEFAULT_POLL_CRON}" \
-    "paperclipai agent inbox-mine --user-id ${PAPERCLIP_AGENT_ID} --status todo,in_progress" \
-    || echo "[entrypoint] hermes cron create failed or job already exists — continuing"
+  if [ -f "${CRON_JOBS_FILE}" ] && grep -qF "${POLL_COMMAND}" "${CRON_JOBS_FILE}"; then
+    echo "[entrypoint] a cron job for '${POLL_COMMAND}' already exists — not creating a duplicate"
+  else
+    hermes cron create "${DEFAULT_POLL_CRON}" "${POLL_COMMAND}" \
+      || echo "[entrypoint] hermes cron create failed — continuing"
+  fi
 fi

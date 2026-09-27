@@ -46,15 +46,17 @@ be considered usable by a swarm owner.
 
 ### Functional Requirements
 
-**FR-001 (P0):** `images/harness/harness-bootstrap.sh` shall not exit the entrypoint process when
-an optional `*_ref` field (`paperclip.api_key_ref`, `identity.github_bot_account_ref`) is empty or
-`"null"`.
-- Current behavior: lines 33–36 use the pattern `[ -n "$X" ] && [ "$X" != "null" ] && echo ...` as
-  a bare statement. Under `set -euo pipefail`, when the first or second test is false, this
-  compound command's own exit status is non-zero and not exempted from `set -e` at the top level
-  — so the script exits immediately. This reproduces with the shipped `instance.default.yaml`
-  itself (`identity.github_bot_account_ref: ""`), meaning the container crashes on its very first
-  boot.
+**FR-001 (RETRACTED — not a real bug):** Originally claimed `images/harness/harness-bootstrap.sh`
+exits the entrypoint whenever an optional `*_ref` field is empty/null, due to `set -e` interacting
+with the `[ -n "$X" ] && [ "$X" != "null" ] && echo ...` pattern.
+- **Correction (2026-09-27), verified by actually running the exact snippet in bash**: `set -e`
+  only fires on the failure of the *last* command in an AND-OR list — a failing non-final element
+  (either `[ ... ]` test here) is exempted regardless of position, and the list's last command
+  (`echo`) essentially never fails. Reproduced with the literal snippet from
+  `harness-bootstrap.sh` and confirmed exit code 0 with both optional refs empty. No fix needed;
+  this finding is retracted. (Root cause of the original error: an incorrect recollection of bash's
+  `set -e`/AND-OR-list exemption rule during the Step 5 review — not verified empirically at the
+  time.)
 
 **FR-002 (P0):** `images/paperclip/entrypoint.sh` shall not silently continue when the `paperclip`
 process fails to start.
@@ -126,12 +128,16 @@ paths (P0s), or additive CI changes (P1/P2s).
 
 ## Success Criteria and Acceptance Criteria
 
-- [ ] Starting a harness or harness+Paperclip container with the unmodified default
-      `instance.yaml` does not exit/crash the entrypoint.
-- [ ] Leaving `paperclip.api_key_ref` and/or `identity.github_bot_account_ref` blank does not
-      prevent `~/.hermes/.env` from being written with whatever fields *are* present.
-- [ ] A regression test exists exercising the bootstrap logic with an instance config missing
-      these optional fields.
+- [x] ~~Starting a harness or harness+Paperclip container with the unmodified default
+      `instance.yaml` does not exit/crash the entrypoint.~~ Verified already true (FR-001
+      retracted) — reproduced the exact snippet in bash with both optional refs empty, exit
+      code 0.
+- [x] ~~Leaving `paperclip.api_key_ref` and/or `identity.github_bot_account_ref` blank does not
+      prevent `~/.hermes/.env` from being written with whatever fields *are* present.~~ Same
+      verification as above — `.env` is written correctly with blank optional fields.
+- [ ] A shellcheck-based regression test exists guarding this AND-OR-list pattern generally (not
+      because this instance was buggy, but so a *future* edit that moves `echo` out of the final
+      position doesn't reintroduce a real version of this class of bug unnoticed).
 - [ ] The harness+Paperclip image installs a working `paperclip` command.
 - [ ] If `paperclip serve` fails to start or exits, the entrypoint surfaces that failure loudly
       rather than silently continuing.

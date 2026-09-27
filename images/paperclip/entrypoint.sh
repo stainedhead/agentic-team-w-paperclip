@@ -12,11 +12,23 @@ set -euo pipefail
 # not including) its final `exec hermes gateway run`.
 source /opt/agentic-team/harness-bootstrap.sh
 
-# TODO(verify): the actual Paperclip CLI/service start command — research confirmed Paperclip's
-# API/CLI surface for agent registration and work retrieval, but not the literal command to start
-# its own long-running service process. Verify against Paperclip's own deployment docs.
+if ! command -v paperclip >/dev/null 2>&1; then
+  echo "[entrypoint] FATAL: no 'paperclip' command found on PATH — the image build did not" >&2
+  echo "[entrypoint] install it successfully. Refusing to start with Paperclip silently missing." >&2
+  exit 1
+fi
+
+# TODO(verify): `paperclip serve` is the assumed start command; confirm against Paperclip's own
+# deployment docs once available (research covered registration/work-retrieval, not the literal
+# server-start invocation).
 paperclip serve &
 PAPERCLIP_PID=$!
+sleep 1
+if ! kill -0 "${PAPERCLIP_PID}" 2>/dev/null; then
+  echo "[entrypoint] FATAL: 'paperclip serve' exited immediately after starting — Paperclip is" >&2
+  echo "[entrypoint] not running. Refusing to continue with it silently missing." >&2
+  exit 1
+fi
 trap 'kill -TERM "${PAPERCLIP_PID}" 2>/dev/null || true' TERM INT EXIT
 
 exec hermes gateway run --foreground

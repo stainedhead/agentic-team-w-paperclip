@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # --- Hermes (Nous Research Hermes Agent) ---------------------------------------------------
 # Verified 2026-09-27 against the actual install script (not just docs) — see
-# specs/260927-agentic-team-w-paperclip/research.md. The script clones the repo via git and
+# specs/archive/260927-agentic-team-w-paperclip/research.md. The script clones the repo via git and
 # bootstraps its own uv/Python runtime, so it needs network access during build and `git` as a
 # prerequisite (installed above). --non-interactive skips setup/gateway prompts, needed for a
 # non-interactive Docker build. This is a default the swarm owner can replace (e.g. to pin a
@@ -42,5 +42,26 @@ RUN curl -fsSL https://opencode.ai/install | bash
 WORKDIR /opt/agentic-team
 COPY instance.default.yaml harness-bootstrap.sh entrypoint.sh ./
 RUN chmod +x harness-bootstrap.sh entrypoint.sh
+
+# Run as a non-root user at runtime (consistent with this project's own UID/GID 1000:1000
+# convention — see documentation/architectual-decisions-record.md ADR-0002). The tool installers
+# above ran as root and may have placed binaries under /root's default install locations (e.g.
+# ~/.local/bin, a common convention for curl-based CLI installers); widen /root to read+execute
+# (not write) so those remain reachable after dropping privileges, and add the common path
+# explicitly since ENV PATH persists across layers/runtime while a modified .bashrc would not.
+# UNVERIFIED: no Docker daemon was available to confirm this actually works end-to-end — see
+# specs/260927-agentic-team-w-paperclip-auto-review/implementation-notes.md.
+RUN groupadd -g 1000 agent && useradd -u 1000 -g 1000 -m -d /home/agent -s /bin/bash agent \
+    && chmod -R a+rX /root
+# Best-effort copy of whatever dotfiles/config the installers above wrote under /root — kept as
+# its own RUN (rather than `&&`-chained with a trailing `|| true`, which would mask a real
+# failure in the group/user creation above) so a missing/empty /root/.* glob can't silently mask
+# an unrelated failure.
+RUN cp -r /root/.[!.]* /home/agent/ 2>/dev/null; true
+RUN chown -R agent:agent /home/agent \
+    && mkdir -p /data && chown -R agent:agent /opt/agentic-team /data
+ENV PATH="/root/.local/bin:${PATH}" \
+    HOME=/home/agent
+USER agent
 
 ENTRYPOINT ["/opt/agentic-team/entrypoint.sh"]

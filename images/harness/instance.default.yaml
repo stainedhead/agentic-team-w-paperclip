@@ -1,6 +1,6 @@
 # Default instance configuration, written to /data/instance.yaml on first start
 # (FR-025) if no configuration already exists there. See
-# specs/260927-agentic-team-w-paperclip/architecture.md for the field reference.
+# specs/archive/260927-agentic-team-w-paperclip/architecture.md for the field reference.
 #
 # Every *_ref field is a name/path used to look up a credential (a .env var name
 # locally, or an AWS Secrets Manager secret name in AWS) — never a raw credential
