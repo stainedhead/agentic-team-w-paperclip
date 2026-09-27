@@ -26,6 +26,9 @@ work-assignment plumbing from scratch.
 
 - Real-time monitoring of agent internals.
 - Billing/chargeback system (for now).
+- Automating deployment into a swarm owner's runtime environment. This product delivers the
+  container images, documentation, and CI/CD to build and publish them; actually deploying to a
+  local lab (macOS `Container`), ECS Fargate, or EKS is the swarm owner's responsibility.
 
 ## Functional Requirements
 
@@ -129,6 +132,15 @@ credential values.
 **FR-029:** Documentation shall be provided for configuring credentials/secrets in both modes —
 the local `.env` approach and the AWS Secrets Manager approach — under `configuration-docs/`.
 
+**FR-030:** CI/CD shall build both container image variants (FR-016) and publish them to GHCR
+(GitHub Container Registry).
+
+**FR-031:** CI/CD shall support cutting GitHub Releases for the product.
+
+**FR-032:** The product shall provide deployment examples/documentation for each supported
+target (macOS `Container`, ECS Fargate, EKS), but shall not itself automate deployment into a
+swarm owner's environment — that step is performed by the swarm owner.
+
 ## Non-Functional Requirements
 
 - **Observability:** Supported on all deployment platforms (macOS `Container`, ECS Fargate,
@@ -196,6 +208,10 @@ the local `.env` approach and the AWS Secrets Manager approach — under `config
       by configuration rather than embedded.
 - [ ] `configuration-docs/` contains documentation covering both the local `.env` approach and
       the AWS Secrets Manager approach, and is referenced from `README.md`.
+- [ ] CI/CD builds both container image variants and publishes them to GHCR.
+- [ ] CI/CD supports cutting a GitHub Release for the product.
+- [ ] Deployment examples/documentation exist for macOS `Container`, ECS Fargate, and EKS,
+      without the product itself automating deployment into any of them.
 
 ## Dependencies and Risks
 
@@ -213,6 +229,8 @@ the local `.env` approach and the AWS Secrets Manager approach — under `config
 | AWS ECS Fargate | Dependency | Cloud deployment target (see `documentation/technical-architecture.md`). |
 | AWS EKS | Dependency | Alternate cloud deployment target; configurable Account/Cluster/Namespace. |
 | AWS Secrets Manager | Dependency | Source of credentials/secrets for AWS deployments (FR-028). |
+| GHCR (GitHub Container Registry) | Dependency | Publish target for both container image variants (FR-030). |
+| GitHub Releases | Dependency | Release mechanism for the product (FR-031). |
 | Local-mode architecture undesigned | Risk | Carried over from `INTENT.md`; this PRD decides the local container runtime (macOS `Container`) but not the full local architecture (networking, service discovery, identity store, etc.) equivalent to the AWS design. |
 | Credential sprawl | Risk | Each harness instance may hold credentials for a model host, an auth identity, and potentially Jira/GitHub — increases surface area for credential management/rotation. |
 
