@@ -5,8 +5,9 @@ ARG BASE_IMAGE=ghcr.io/stainedhead/agentic-team-w-paperclip/harness:latest
 FROM ${BASE_IMAGE}
 
 # The harness image already dropped to a non-root USER; switch back to root for this image's own
-# install step, then drop privileges again below.
-USER root
+# install step, then drop privileges again below. Numeric, for the same reason as the 1000:1000
+# switch at the end of this file.
+USER 0:0
 
 # Inherited from the base image; restated so this Dockerfile stays correct on its own if the base ever
 # changes. The Paperclip install below downloads to a file rather than piping, so nothing here depends
