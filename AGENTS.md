@@ -15,6 +15,8 @@ what and how.
 
 ## Repository layout
 - `README.md` — orientation for humans and agents.
+- `LICENSE` — MIT. Covers this repository's packaging, configuration and docs only; the four packaged
+  tools carry their own licenses.
 - `INTENT.md` — goals and intent behind the project. Update when direction or scope changes.
 - `initial-context.md` — the original architecture draft this project started from. **Frozen —
   do not edit.** It is AWS-only and pre-dates the local-mode requirement.

@@ -13,7 +13,7 @@ a past entry in place.
 |---|---|---|
 | 0001–0005 | ECS/Graviton fleet, IAM+EFS isolation, Okta ingress, Aurora state, CDK factory | Target design — **not built here** |
 | 0006–0009 | Image lineage, work-poll mechanism, `instance.yaml`, secret paths | What is built |
-| 0010–0015 | Scope boundary, config resolution, build context, process supervision, poll schedule, Node/Paperclip install | What is built |
+| 0010–0016 | Scope boundary, config resolution, build context, process supervision, poll schedule, Node/Paperclip install, per-arch builds | What is built |
 
 ## ADR-0001: Deploy the worker fleet as long-running ECS Fargate tasks on ARM64 (Graviton)
 - **Status**: Accepted (2026-09-27)
@@ -212,6 +212,29 @@ a past entry in place.
   tracks the npm package directly, so a future change to what `install.sh` does *besides* installing
   Node and the package would not be picked up automatically. Revisit if upstream fixes the
   `--no-prompt` incompatibility.
+
+## ADR-0016: Build each architecture on its own native runner and merge into one manifest
+- **Status**: Accepted (2026-09-28)
+- **Context**: A single build job produced both `linux/amd64` and `linux/arm64` using QEMU emulation
+  for arm64. That is the worst possible shape for these images: every tool installs by downloading
+  and bootstrapping its own runtime (uv/Python for Hermes, a Node toolchain, prebuilt binaries), and
+  under emulation all of that work ran interpreted. `linux/arm64` is not optional — it is what Apple
+  Silicon lab machines and AWS Graviton both run, i.e. the primary local-development target. This
+  repository is public, so GitHub's native arm64 runners are available at no cost.
+- **Decision**: Build each architecture in its own job on a runner of that architecture
+  (`ubuntu-latest` for amd64, `ubuntu-24.04-arm` for arm64), pushing **by digest with no tag**, then
+  merge the per-architecture digests into one tagged multi-arch manifest per image with
+  `docker buildx imagetools create`. `smoke-build` is likewise a per-architecture matrix, so arm64 is
+  verified by execution rather than assumed. The paperclip image's base is pinned to the harness
+  **manifest** digest, so each architecture's paperclip build resolves the matching harness
+  architecture automatically — preserving ADR-0006's digest pinning.
+- **Consequences**: No emulation, and the two architectures build in parallel rather than in
+  sequence. Pushing by digest is what lets two concurrent jobs contribute to one image without racing
+  over a shared tag. Costs: more jobs to read, a digest hand-off through build artifacts, and a
+  dependency on the `ubuntu-24.04-arm` runner label — if that label is ever unavailable, the arm64
+  jobs queue rather than fall back to emulation, and the fix is to restore a QEMU path deliberately.
+  **There is still exactly one Dockerfile per image**; splitting the containerization per architecture
+  was rejected, since it would duplicate every maintenance change and defeat ADR-0006.
 
 ## Open (not decided)
 - **Full local networking/service-discovery/identity-store design** equivalent to the AWS

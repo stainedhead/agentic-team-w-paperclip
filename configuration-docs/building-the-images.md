@@ -97,12 +97,19 @@ Retag and push, or fork `.github/workflows/build-and-publish.yml` and change the
   container comes up as uid 1000, every tool is on `PATH` after the privilege drop, and the
   `instance.yaml` bootstrap writes a config. Nothing is pushed. This catches the failures static
   analysis cannot.
-- **`build-and-publish`** — multi-arch (`linux/amd64` + `linux/arm64`) via QEMU, harness digest
-  pinned into the paperclip build, pushed to GHCR. Skipped on pull requests.
+- **`build-harness` / `build-paperclip`** — one job per architecture, each on a **native runner** of
+  that architecture (`ubuntu-latest` for amd64, `ubuntu-24.04-arm` for arm64), pushed **by digest with
+  no tag**.
+- **`merge-harness` / `merge-paperclip`** — assemble the per-architecture digests into one tagged
+  multi-arch manifest per image with `docker buildx imagetools create`, and apply the GHCR tags. The
+  paperclip build is pinned to the harness *manifest* digest, so each architecture picks up its own
+  harness layer.
 
-Multi-arch builds under QEMU are slow — each installer bootstraps its own runtime under emulation.
-The workflow uses GitHub Actions cache (`cache-from`/`cache-to: type=gha`) to keep that tolerable;
-keep it if you fork.
+No QEMU anywhere — see ADR-0016. That matters for these images specifically: every tool installs by
+downloading and bootstrapping its own runtime, and emulating all of that was the dominant cost. If you
+fork into a private repo where native arm64 runners are not free, either drop arm64 or reinstate
+`docker/setup-qemu-action` and a single multi-platform build, and expect it to be slow. Layer caching
+(`cache-from`/`cache-to: type=gha`, scoped per architecture) is worth keeping either way.
 
 ## Things the build taught us (and might bite your own build)
 
@@ -133,4 +140,4 @@ Each of these was found by actually building, not by reading:
   [Hermes's own documentation](https://github.com/nousresearch/hermes-agent) before relying on it.
 - **Volume permissions.** `smoke-build` runs without a mounted volume, so it does not prove your bind
   mount, PVC or EFS access point is writable by uid 1000.
-- **`linux/arm64`.** Only the publish job builds it, under QEMU; the smoke test is amd64 only.
+- Nothing architecture-specific: `smoke-build` covers `linux/amd64` and `linux/arm64` natively.

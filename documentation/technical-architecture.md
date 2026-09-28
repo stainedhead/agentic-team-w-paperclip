@@ -14,7 +14,7 @@ Section 0 reflects `specs/archive/260927-agentic-team-w-paperclip/` and its code
 `specs/archive/260927-agentic-team-w-paperclip-auto-review/`, plus a docs/design review pass that
 added CI's `smoke-build` job. **Both images now build and pass runtime verification in CI** — see
 README.md's Status section for the assertion output and for what remains unverified (volume
-permissions, the entrypoints as PID 1, and `linux/arm64`).
+permissions and the entrypoints as PID 1).
 
 ## 0. What's actually built (first shipped feature)
 
@@ -31,19 +31,19 @@ flowchart TB
 
     subgraph H["images/harness/ → ghcr.io/.../harness"]
         direction TB
-        H1["Prereqs: ca-certificates, curl, git, tar<br/>+ gh (GitHub CLI) + yq"]
+        H1["Prereqs: ca-certificates, curl, git, tar,<br/><b>libatomic1</b><br/>+ gh (GitHub CLI) + yq"]
         H2["Hermes · OMP · OpenCode CLI<br/><i>each via its own upstream install script</i>"]
         H3["/opt/agentic-team/<br/>instance.default.yaml · harness-bootstrap.sh · entrypoint.sh"]
-        H4["USER agent (uid/gid 1000:1000) — non-root"]
+        H4["USER 1000:1000 — non-root"]
         H5["ENTRYPOINT → Hermes gateway"]
         H1 --> H2 --> H3 --> H4 --> H5
     end
 
     subgraph P["images/paperclip/ → ghcr.io/.../paperclip"]
         direction TB
-        P1["USER root (temporarily) + openssl"]
-        P2["Paperclip<br/><i>checksum-verified upstream installer</i>"]
-        P3["paperclip-entrypoint.sh<br/>USER agent again"]
+        P1["USER 0:0 (temporarily)<br/>+ openssl, gnupg"]
+        P2["<b>Node.js 22</b> (NodeSource)<br/>then npm i -g paperclipai<br/><i>upstream install.sh cannot run<br/>non-interactively — ADR-0015</i>"]
+        P3["paperclip-entrypoint.sh<br/>USER 1000:1000 again"]
         P4["ENTRYPOINT → Hermes gateway <b>and</b> Paperclip"]
         P1 --> P2 --> P3 --> P4
     end
@@ -61,26 +61,60 @@ accordingly — see `configuration-docs/building-the-images.md`.
 
 ### Build and publish pipeline
 
+Every architecture is built on a **native runner** of that architecture, in parallel, and the results
+are merged into one multi-arch manifest per image — no QEMU emulation anywhere (ADR-0016).
+
 ```mermaid
-flowchart LR
-    TRIG["push → main<br/>pull_request<br/>release published<br/>workflow_dispatch"] --> LINT
+flowchart TB
+    TRIG["push → main · pull_request<br/>release published · workflow_dispatch"] --> LINT
 
-    LINT["<b>lint</b><br/>shellcheck × 3 scripts<br/>hadolint × 2 Dockerfiles"]
-    SMOKE["<b>smoke-build</b><br/>amd64 only, never pushed<br/>runs both images:<br/>uid 1000? tools on PATH?<br/>instance.yaml bootstrap?"]
-    PUB["<b>build-and-publish</b><br/>QEMU + Buildx<br/>linux/amd64 + linux/arm64"]
+    LINT["<b>lint</b><br/>shellcheck × 4 scripts<br/>hadolint × 2 Dockerfiles"]
 
-    LINT --> SMOKE --> PUB
-    PUB -->|"harness image"| DIG["digest"]
-    DIG -->|"BASE_IMAGE=...@sha256:…"| PUB2["paperclip image"]
-    PUB2 --> GHCR["GHCR<br/>:latest · :sha-… · :branch · :semver"]
+    subgraph SMOKE["<b>smoke-build</b> — one job per arch, nothing published"]
+        direction LR
+        SA["amd64<br/><i>ubuntu-latest</i>"]
+        SB["arm64<br/><i>ubuntu-24.04-arm</i>"]
+    end
+    SMOKE_NOTE["builds <b>and runs</b> both images:<br/>uid 1000? tools on PATH?<br/>instance.yaml bootstrap? npx?"]
 
-    SMOKE -.->|"pull_request stops here —<br/>gates run, nothing published"| STOP(["no publish"])
+    LINT --> SMOKE
+    SMOKE -.-> SMOKE_NOTE
+    SMOKE -.->|"a pull request stops here"| STOP(["no publish"])
+
+    subgraph BH["<b>build-harness</b> — pushed by digest, untagged"]
+        direction LR
+        HA["amd64"]
+        HB["arm64"]
+    end
+
+    MH["<b>merge-harness</b><br/>imagetools create →<br/>one tagged manifest"]
+
+    subgraph BP["<b>build-paperclip</b> — pushed by digest, untagged"]
+        direction LR
+        PA["amd64"]
+        PB["arm64"]
+    end
+
+    MP["<b>merge-paperclip</b><br/>imagetools create →<br/>one tagged manifest"]
+    GHCR["<b>GHCR</b><br/>:latest · :sha-… · :branch · :semver<br/>multi-arch manifests"]
+
+    SMOKE ==>|"main / release only"| BH
+    BH ==> MH
+    MH ==>|"BASE_IMAGE=harness@sha256:…<br/><i>the manifest digest, so each arch<br/>resolves its own harness layer</i>"| BP
+    BP ==> MP
+    MH ==> GHCR
+    MP ==> GHCR
 
     style LINT fill:#fef7e0,stroke:#b06000
-    style SMOKE fill:#fef7e0,stroke:#b06000
-    style PUB fill:#e8f0fe,stroke:#1a73e8
-    style GHCR fill:#e6f4ea,stroke:#137333
+    style SMOKE fill:#fef7e0,stroke:#b06000,stroke-width:2px
+    style SMOKE_NOTE fill:#fff,stroke:#b06000,stroke-dasharray: 3 3
+    style BH fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px
+    style BP fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px
+    style GHCR fill:#e6f4ea,stroke:#137333,stroke-width:2px
 ```
+
+Pushing **by digest** with no tag is what lets two concurrent jobs contribute to the same image
+without racing over a shared tag; the merge job is the only thing that applies tags.
 
 ### Components and behavior
 
@@ -88,14 +122,16 @@ flowchart LR
   installs Hermes (Nous Research Hermes Agent), OMP (oh-my-pi), and OpenCode CLI via each tool's
   own verified install script, and runs Hermes on startup; the harness+Paperclip image is built
   `FROM` the harness image (see ADR-0006) and runs both Hermes and Paperclip.
-- **CI/CD** (`.github/workflows/build-and-publish.yml`) runs three gated jobs: `lint` (shellcheck,
-  hadolint) → `smoke-build` (single-arch build of both images, loaded and actually run to assert
-  uid 1000, tools on `PATH` post-privilege-drop, and a working `instance.yaml` bootstrap; never
-  pushed) → `build-and-publish` (multi-arch `linux/amd64` + `linux/arm64` to GHCR, harness digest
-  pinned into the paperclip build). Pull requests run the first two jobs only. A published GitHub
-  Release semver-tags the images.
-- **Both images run as a non-root user** (UID/GID 1000:1000), not root, though this hasn't been
-  verified with a real `docker build`/`run` — see the Status note above.
+- **CI/CD** (`.github/workflows/build-and-publish.yml`): `lint` (shellcheck, hadolint) →
+  `smoke-build` (per-architecture matrix; builds both images and actually runs them to assert uid
+  1000, tools on `PATH` post-privilege-drop, and a working `instance.yaml` bootstrap) →
+  `build-harness` / `build-paperclip` (one job per architecture on a **native runner** of that
+  architecture, pushed by digest) → `merge-*` (assembles the per-arch digests into one tagged
+  multi-arch manifest per image). No QEMU emulation; see ADR-0016. Pull requests stop after
+  `smoke-build`. A published GitHub Release semver-tags the images.
+- **Both images run as a non-root user** (UID/GID 1000:1000), numerically rather than by name so a
+  runtime checking "is this non-root" need not resolve the image's passwd file. Verified by execution
+  in `smoke-build` on both architectures.
 - **Paperclip itself is started via `npx paperclipai onboard --yes` (first boot) or
   `npx paperclipai run` (subsequent boots)** — not a bare `paperclip` binary — with its data
   directory (`PAPERCLIP_HOME`) pointed at the same `/data` persistent volume as `instance.yaml`.

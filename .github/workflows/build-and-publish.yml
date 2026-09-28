@@ -1,19 +1,29 @@
 name: Build and Publish Images
 
-# Builds both container image variants and publishes them to GHCR; semver-tags them when a
-# GitHub Release is published. See documentation/technical-architecture.md for why the paperclip
-# image is built FROM the harness image (pinned by digest, not a mutable tag, to avoid a race
-# between the two builds landing on the registry).
+# Builds both container image variants for linux/amd64 and linux/arm64 and publishes them to GHCR;
+# semver-tags them when a GitHub Release is published.
 #
-# Build context note: each image's `context:` is its own directory under images/, NOT the repo
-# root. The Dockerfiles `COPY` their sidecar files (instance.default.yaml, harness-bootstrap.sh,
-# entrypoint.sh) by bare filename, which only resolves if the context is the directory those
-# files live in. This also means `docker build images/harness` works locally exactly as CI does.
+# ── Why one job per architecture ──────────────────────────────────────────────────────────────
+# Each architecture is built on a runner of that architecture, in parallel, and the two results are
+# then merged into a single multi-arch manifest per image. This replaces building arm64 under QEMU
+# emulation on an amd64 runner, which was punishingly slow here: every tool in these images installs
+# by downloading and bootstrapping its own runtime (uv/Python for Hermes, a Node toolchain, prebuilt
+# binaries), and all of that ran emulated. GitHub's native arm64 runners are free for public
+# repositories, so no emulation is needed at all.
 #
-# Trigger note: only `push: branches: [main]` and `release: types: [published]` publish — a bare
-# `tags: [...]` push is intentionally NOT a separate trigger, since publishing a release also
-# fires on the tag it's cut from, and having both would double-build/double-publish. Pull requests
-# run the lint and smoke-build gates but never push to the registry.
+# There is still exactly ONE Dockerfile per image. The split is in CI only — per-architecture
+# Dockerfiles would duplicate every maintenance change and defeat the point of the paperclip image
+# being built FROM the harness image (see ADR-0006).
+#
+# ── Build context ─────────────────────────────────────────────────────────────────────────────
+# Each image's `context:` is its own directory under images/, NOT the repo root: the Dockerfiles
+# COPY their sidecar files by bare filename, which only resolves if the context is the directory
+# those files live in. `docker build images/harness` therefore works locally exactly as CI does.
+#
+# ── Triggers ──────────────────────────────────────────────────────────────────────────────────
+# Only `push: branches: [main]` and `release: types: [published]` publish. A bare `tags: [...]` push
+# is intentionally not a separate trigger, since publishing a release also fires on the tag it is cut
+# from and both would double-publish. Pull requests run the lint and smoke-build gates only.
 
 on:
   push:
@@ -32,13 +42,11 @@ env:
   REGISTRY: ghcr.io
   HARNESS_IMAGE: ${{ github.repository }}/harness
   PAPERCLIP_IMAGE: ${{ github.repository }}/paperclip
-  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   lint:
-    # Validate the Dockerfiles and shell scripts before building images from them — this is
-    # exactly the class of bug (a shell logic error, a Dockerfile step that's a no-op) a linter
-    # catches before merge.
+    # Validate the Dockerfiles and shell scripts before building images from them — exactly the class
+    # of bug (a shell logic error, a Dockerfile step that is a no-op) a linter catches before merge.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -48,9 +56,8 @@ jobs:
         # Both entrypoints source harness-bootstrap.sh by its in-container absolute path, which does
         # not exist at lint time — an SC1091 failure on its own. `-x` makes shellcheck follow the
         # `# shellcheck source=` directives in those files, and `--source-path=SCRIPTDIR` resolves
-        # those directives relative to each script's own directory rather than the current working
-        # directory, so this works from anywhere. The result is stronger than merely silencing
-        # SC1091: shellcheck analyses the sourced file in the context of each caller.
+        # them relative to each script's own directory rather than the current working directory.
+        # Stronger than merely silencing SC1091: shellcheck analyses the sourced file in context.
         run: |
           shellcheck -x --source-path=SCRIPTDIR \
                      images/harness/harness-bootstrap.sh \
@@ -69,17 +76,28 @@ jobs:
           dockerfile: images/paperclip/Dockerfile
 
   smoke-build:
-    # Single-arch (amd64, no QEMU) build of both images that is actually run, to verify the things
-    # static analysis cannot: that the tool installers succeed, that their binaries are still on PATH
-    # after the image drops to the non-root agent user, and that the instance.yaml bootstrap writes a
-    # config to /data.
+    # Builds both images for ONE architecture and actually runs them, asserting what static analysis
+    # cannot: that the tool installers succeed, that their binaries are still on PATH after the image
+    # drops to the non-root agent user, and that the instance.yaml bootstrap writes a config. Runs
+    # natively on each architecture, so arm64 — the architecture Apple Silicon lab machines and AWS
+    # Graviton both use — is verified rather than assumed.
     #
     # Images go to a throwaway registry on localhost rather than the daemon's image store, because
-    # buildx runs the build inside its own container and cannot see images `docker load`ed into the
-    # host daemon — so the paperclip build could not resolve the harness image as its base and tried
-    # to pull it from Docker Hub. The registry lives and dies with this job; nothing leaves it.
+    # buildx builds inside its own container and cannot see images `docker load`ed into the host
+    # daemon — the paperclip build would otherwise try Docker Hub for its base. The registry dies
+    # with the job.
     needs: lint
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     services:
       registry:
         image: registry:2
@@ -93,21 +111,20 @@ jobs:
 
       - name: Set up Docker Buildx
         # network=host lets the builder container reach the registry service on localhost:5000.
-        # BuildKit and the Docker daemon both treat localhost registries as insecure/HTTP by default,
-        # so no extra registry configuration is needed.
+        # BuildKit and the Docker daemon both treat localhost registries as insecure/HTTP by default.
         uses: docker/setup-buildx-action@v3
         with:
           driver-opts: network=host
 
-      - name: Build harness image (amd64, to the local registry)
+      - name: Build harness image (${{ matrix.arch }}, to the local registry)
         uses: docker/build-push-action@v6
         with:
           context: images/harness
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ env.LOCAL_REGISTRY }}/harness:smoke
-          cache-from: type=gha,scope=harness
-          cache-to: type=gha,scope=harness,mode=max
+          cache-from: type=gha,scope=harness-${{ matrix.arch }}
+          cache-to: type=gha,scope=harness-${{ matrix.arch }},mode=max
 
       - name: Verify harness image runtime
         run: |
@@ -116,7 +133,7 @@ jobs:
           # post-privilege-drop PATH, not root's.
           docker run --rm --entrypoint /bin/bash "${LOCAL_REGISTRY}/harness:smoke" -c '
             set -euo pipefail
-            echo "whoami=$(whoami) uid=$(id -u) HOME=${HOME}"
+            echo "arch=$(uname -m) whoami=$(whoami) uid=$(id -u) HOME=${HOME}"
             [ "$(id -u)" = "1000" ] || { echo "FAIL: image is not running as uid 1000"; exit 1; }
             for tool in hermes omp opencode yq gh git; do
               if command -v "${tool}" >/dev/null 2>&1; then
@@ -131,9 +148,9 @@ jobs:
       - name: Verify instance.yaml bootstrap writes a default config
         run: |
           set -euo pipefail
-          # Source the bootstrap directly rather than running the entrypoint, which would exec
-          # into the Hermes gateway and block. The default template has an empty paperclip.agent_id,
-          # so the cron-create branch is correctly skipped.
+          # Source the bootstrap rather than running the entrypoint, which would exec into the Hermes
+          # gateway and block. The default template has an empty paperclip.agent_id, so the
+          # cron-create branch is correctly skipped.
           docker run --rm --entrypoint /bin/bash "${LOCAL_REGISTRY}/harness:smoke" -c '
             set -euo pipefail
             source /opt/agentic-team/harness-bootstrap.sh
@@ -143,52 +160,61 @@ jobs:
             echo "ok: wrote ${HOME}/.hermes/.env"
           '
 
-      - name: Build paperclip image (amd64, FROM the harness image just built)
+      - name: Build paperclip image (${{ matrix.arch }}, FROM the harness image just built)
         uses: docker/build-push-action@v6
         with:
           context: images/paperclip
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ env.LOCAL_REGISTRY }}/paperclip:smoke
           build-args: |
             BASE_IMAGE=${{ env.LOCAL_REGISTRY }}/harness:smoke
-          cache-from: type=gha,scope=paperclip
-          cache-to: type=gha,scope=paperclip,mode=max
+          cache-from: type=gha,scope=paperclip-${{ matrix.arch }}
+          cache-to: type=gha,scope=paperclip-${{ matrix.arch }},mode=max
 
       - name: Verify paperclip image runtime
         run: |
           set -euo pipefail
           # npx is a hard runtime dependency: Paperclip's CLI is invoked as `npx paperclipai <verb>`,
-          # so the entrypoint fails fast without it. Whether paperclip.ing/install.sh brings its own
-          # Node is not documented upstream — this step is what answers that, at build time rather
-          # than at a swarm owner's deploy time. If it fails, add Node to images/paperclip/Dockerfile.
+          # so the entrypoint fails fast without it. Paperclip does not bundle Node, so the image
+          # installs it (see ADR-0015) — this asserts that actually worked, per architecture.
           docker run --rm --entrypoint /bin/bash "${LOCAL_REGISTRY}/paperclip:smoke" -c '
             set -euo pipefail
+            echo "arch=$(uname -m) uid=$(id -u)"
             [ "$(id -u)" = "1000" ] || { echo "FAIL: image is not running as uid 1000"; exit 1; }
-            for tool in hermes omp opencode openssl; do
-              command -v "${tool}" >/dev/null 2>&1 || { echo "FAIL: ${tool} missing"; exit 1; }
-              echo "ok: ${tool}"
+            for tool in hermes omp opencode openssl node npm npx; do
+              command -v "${tool}" >/dev/null 2>&1 \
+                || { echo "FAIL: ${tool} is not on PATH"; exit 1; }
+              echo "ok: ${tool} -> $(command -v "${tool}")"
             done
-            if command -v npx >/dev/null 2>&1; then
-              echo "ok: npx -> $(command -v npx)"
-            else
-              echo "FAIL: npx is not on PATH, but the entrypoint invokes Paperclip as \"npx paperclipai\"."
-              echo "      Paperclip cannot start in this image. Install Node.js in images/paperclip/Dockerfile."
-              exit 1
-            fi
+            echo "node $(node --version), npm $(npm --version)"
+            command -v paperclipai >/dev/null 2>&1 \
+              && echo "ok: paperclipai -> $(command -v paperclipai)" \
+              || echo "note: no paperclipai shim on PATH; the entrypoint invokes it via npx"
           '
 
-  build-and-publish:
+  # ── Publish ─────────────────────────────────────────────────────────────────────────────────
+  # Each image is built per architecture and pushed BY DIGEST only (no tag), then a merge job
+  # assembles the per-arch digests into one tagged multi-arch manifest. Pushing by digest is what
+  # lets two parallel jobs contribute to the same image without racing over a shared tag.
+
+  build-harness:
     needs: [lint, smoke-build]
-    # Pull requests exercise the gates above but must never publish to the registry.
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up QEMU (for linux/arm64 builds)
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -200,8 +226,66 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for harness image
-        id: meta-harness
+      - name: Extract metadata (labels only; tags are applied by the merge job)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.HARNESS_IMAGE }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: images/harness
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.HARNESS_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=harness-${{ matrix.arch }}
+          cache-to: type=gha,scope=harness-${{ matrix.arch }},mode=max
+
+      - name: Export digest
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          digest='${{ steps.build.outputs.digest }}'
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-harness-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-harness:
+    needs: build-harness
+    runs-on: ubuntu-latest
+    outputs:
+      # The multi-arch manifest digest, used to pin the paperclip image's base (ADR-0006). Pinning to
+      # the manifest rather than one architecture's image means each paperclip arch build resolves the
+      # matching harness arch automatically.
+      digest: ${{ steps.manifest.outputs.digest }}
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-harness-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.HARNESS_IMAGE }}
@@ -211,20 +295,113 @@ jobs:
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push harness image (multi-arch)
-        id: build-harness
+      - name: Create multi-arch manifest
+        working-directory: /tmp/digests
+        run: |
+          set -euo pipefail
+          # One `-t` per tag from metadata-action, and one source ref per per-arch digest file.
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}") \
+            $(printf "${REGISTRY}/${HARNESS_IMAGE}@sha256:%s " *)
+
+      - name: Capture manifest digest
+        id: manifest
+        run: |
+          set -euo pipefail
+          digest="$(docker buildx imagetools inspect \
+            "${REGISTRY}/${HARNESS_IMAGE}:sha-${GITHUB_SHA}" \
+            --format '{{json .Manifest}}' | jq -r '.digest')"
+          echo "harness manifest digest: ${digest}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Report
+        run: |
+          docker buildx imagetools inspect "${REGISTRY}/${HARNESS_IMAGE}:sha-${GITHUB_SHA}"
+
+  build-paperclip:
+    needs: merge-harness
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (labels only; tags are applied by the merge job)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.PAPERCLIP_IMAGE }}
+
+      - name: Build and push by digest (FROM the harness manifest, digest-pinned)
+        id: build
         uses: docker/build-push-action@v6
         with:
-          context: images/harness
-          platforms: ${{ env.PLATFORMS }}
-          push: true
-          tags: ${{ steps.meta-harness.outputs.tags }}
-          labels: ${{ steps.meta-harness.outputs.labels }}
-          cache-from: type=gha,scope=harness-multiarch
-          cache-to: type=gha,scope=harness-multiarch,mode=max
+          context: images/paperclip
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.HARNESS_IMAGE }}@${{ needs.merge-harness.outputs.digest }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.PAPERCLIP_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=paperclip-${{ matrix.arch }}
+          cache-to: type=gha,scope=paperclip-${{ matrix.arch }},mode=max
 
-      - name: Extract metadata for paperclip image
-        id: meta-paperclip
+      - name: Export digest
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          digest='${{ steps.build.outputs.digest }}'
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-paperclip-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-paperclip:
+    needs: build-paperclip
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-paperclip-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.PAPERCLIP_IMAGE }}
@@ -234,22 +411,20 @@ jobs:
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push paperclip image (multi-arch, FROM harness image pinned by digest)
-        uses: docker/build-push-action@v6
-        with:
-          context: images/paperclip
-          platforms: ${{ env.PLATFORMS }}
-          push: true
-          tags: ${{ steps.meta-paperclip.outputs.tags }}
-          labels: ${{ steps.meta-paperclip.outputs.labels }}
-          build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.HARNESS_IMAGE }}@${{ steps.build-harness.outputs.digest }}
-          cache-from: type=gha,scope=paperclip-multiarch
-          cache-to: type=gha,scope=paperclip-multiarch,mode=max
+      - name: Create multi-arch manifest
+        working-directory: /tmp/digests
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}") \
+            $(printf "${REGISTRY}/${PAPERCLIP_IMAGE}@sha256:%s " *)
 
-# Note: there is deliberately no separate "create a release" job here. CI/CD supports cutting
-# GitHub Releases by reacting correctly to a release a maintainer publishes (via the GitHub UI or
-# `gh release create`) — the `release: types: [published]` trigger above builds and semver-tags
-# images for it. A prior version of this workflow also tried to *create* the release from a bare
-# tag push, which both duplicated this job and was redundant once triggered by `release:
-# published`, since the release already exists by that point.
+      - name: Report
+        run: |
+          docker buildx imagetools inspect "${REGISTRY}/${PAPERCLIP_IMAGE}:sha-${GITHUB_SHA}"
+
+# Note: there is deliberately no separate "create a release" job. CI/CD supports cutting GitHub
+# Releases by reacting correctly to a release a maintainer publishes (via the UI or
+# `gh release create`) — the `release: types: [published]` trigger semver-tags images for it. An
+# earlier version also tried to *create* the release from a bare tag push, which duplicated the build
+# and was redundant once triggered by `release: published`, since the release already exists by then.
