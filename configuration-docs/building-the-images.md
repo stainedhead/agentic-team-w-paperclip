@@ -38,6 +38,13 @@ accidentally layer a new Paperclip image onto a stale `:latest` (ADR-0006).
 Build both locally with `--build-arg BASE_IMAGE=` as shown above so you are testing your own base,
 not the published one.
 
+**Gotcha if you use buildx:** the plain `docker build` commands above work because the daemon builds
+them and shares one image store, so `BASE_IMAGE=my-harness:dev` resolves to the tag you just built.
+`docker buildx build` runs inside its own builder container, which cannot see images in the host
+daemon — chaining that way fails with `pull access denied … docker.io/library/my-harness:dev` as it
+tries Docker Hub instead. Either stick to plain `docker build` locally, or push the base somewhere the
+builder can reach first. CI takes the second route, using a throwaway `registry:2` on localhost.
+
 ## Run what you built
 
 ```sh
