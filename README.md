@@ -214,9 +214,17 @@ What `smoke-build` **does not** cover:
   would block on the Hermes gateway. So `hermes gateway run --foreground` as the container's main
   process remains the main unverified runtime assumption, along with `hermes cron create`'s own
   de-duplication behavior (the bootstrap guards against duplicates itself rather than relying on it).
-- **`linux/arm64`.** Smoke-build is amd64 only; the arm64 leg is built under QEMU in the publish job.
+- **`linux/arm64` runtime behavior is now covered** — `smoke-build` runs as a per-architecture matrix
+  on native runners, so the arm64 images are built and executed rather than assumed. Apple Silicon
+  lab machines and AWS Graviton both use arm64, so this is the local-development path, not an edge
+  case.
 
-## Licensing
+## License
 
-This repository has **no `LICENSE` file yet**. Since its whole purpose is for others to build from
-it, adding one is worth doing deliberately — that choice belongs to the repository owner.
+[MIT](LICENSE) — use it, fork it, build your own swarm from it, commercially or otherwise. Attribution
+is the only requirement.
+
+The four tools these images install (Hermes, OMP, OpenCode CLI, Paperclip) carry **their own licenses**
+from their own projects; this license covers only the packaging, configuration and documentation in
+this repository. If you redistribute a built image, you are redistributing those tools too — check
+their terms.
