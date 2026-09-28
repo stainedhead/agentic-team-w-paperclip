@@ -127,6 +127,11 @@ Each of these was found by actually building, not by reading:
   the `paperclipai` package, which rejects it. The image installs Node (NodeSource, `ARG NODE_MAJOR`)
   and `npm install -g paperclipai@latest` directly instead — see ADR-0015. If you would rather track
   upstream's script, check whether that flag incompatibility has been fixed first.
+- **QEMU emulation broke the OpenCode install outright** — not just slowed it. The first publish run on
+  the old single-job workflow failed at `curl -fsSL https://opencode.ai/install | bash` while building
+  arm64 under emulation, and the *same Dockerfile* then built and ran cleanly on a native arm64 runner.
+  So if you reinstate a QEMU path for a private fork, expect to debug the installers, not just wait
+  longer.
 - **Tool binaries land in more than one place.** `hermes` and `omp` resolve under
   `/home/agent/.local/bin`, `opencode` under `/home/agent/.opencode/bin`. The image puts both on
   `PATH` (plus `/root/.local/bin`, where the installers ran) and copies root's dotfiles across.

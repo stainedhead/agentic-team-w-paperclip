@@ -34,6 +34,19 @@ on:
     types: [published]
   workflow_dispatch: {}
 
+# Serialize runs per ref so two pushes landing close together cannot race over the same tags.
+# Without this, a second merge starts while the first is still publishing, and whichever finishes last
+# wins `:latest` — which may be the OLDER commit. Observed for real: merging two PRs ~35 minutes apart
+# left two publish runs in flight simultaneously.
+#
+# cancel-in-progress is safe here specifically because per-architecture builds push BY DIGEST and only
+# the merge job applies tags: a cancelled run leaves at most some untagged blobs, which are unreferenced
+# and harmless, never a half-updated tag. Release events get their own group (the ref is the tag), so a
+# release publish is never cancelled by a push to main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write
