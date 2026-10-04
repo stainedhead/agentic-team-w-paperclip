@@ -132,9 +132,10 @@ without racing over a shared tag; the merge job is the only thing that applies t
 - **Both images run as a non-root user** (UID/GID 1000:1000), numerically rather than by name so a
   runtime checking "is this non-root" need not resolve the image's passwd file. Verified by execution
   in `smoke-build` on both architectures.
-- **Paperclip itself is started via `npx paperclipai onboard --yes` (first boot) or
-  `npx paperclipai run` (subsequent boots)** — not a bare `paperclip` binary — with its data
+- **Paperclip itself is started via `npx paperclipai onboard --yes` until its instance config exists,
+  then `npx paperclipai run`** — not a bare `paperclip` binary — with its data
   directory (`PAPERCLIP_HOME`) pointed at the same `/data` persistent volume as `instance.yaml`.
+  A failed first start that only generated boot secrets retries onboarding on restart.
   It requires two boot-time secrets (`BETTER_AUTH_SECRET`,
   `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET`) and uses an embedded PostgreSQL by default (no external
   `DATABASE_URL` needed) — see `configuration-docs/credentials-and-secrets.md`.
@@ -143,7 +144,8 @@ without racing over a shared tag; the merge job is the only thing that applies t
   from a default template on first start and reused thereafter, on a persistent-storage volume
   the swarm owner provides.
 - **Work retrieval**: a Hermes cron job (default: every 5 minutes) calls Paperclip's own
-  `agent inbox-mine` CLI (see ADR-0007) — not custom polling code.
+  `agent inbox-mine` CLI (see ADR-0007). Bootstrap reconciles the job's schedule and agent id
+  through the Hermes CLI on every start (ADR-0017).
 - **Credentials**: never embedded in `instance.yaml`; resolved from the container's own
   environment (a `.env` file locally, AWS Secrets Manager as injected env vars in AWS) — see
   `configuration-docs/credentials-and-secrets.md`.

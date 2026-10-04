@@ -71,7 +71,9 @@ RUN chmod -R a+rX /root; chown -R agent:agent /home/agent 2>/dev/null || true
 
 WORKDIR /opt/agentic-team
 COPY entrypoint.sh ./paperclip-entrypoint.sh
-RUN chmod +x ./paperclip-entrypoint.sh && chown agent:agent ./paperclip-entrypoint.sh
+COPY start-mode.sh ./paperclip-start-mode.sh
+RUN chmod +x ./paperclip-entrypoint.sh \
+    && chown agent:agent ./paperclip-entrypoint.sh ./paperclip-start-mode.sh
 
 # Numeric, matching the base image — see the note there.
 USER 1000:1000

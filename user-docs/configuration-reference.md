@@ -50,8 +50,9 @@ On every start, the bootstrap:
    names a variable which is not set;
 3. writes the resolved values to `~/.hermes/.env` (mode `600`, regenerated every start) and exports
    them so Hermes and everything it spawns inherits them;
-4. registers the Paperclip work-pull cron job with Hermes, skipping it if an identical job already
-   exists so restarts cannot accumulate duplicates.
+4. reconciles the Paperclip work-pull cron job with Hermes: creates it if missing, updates its
+   schedule or agent id when changed, and removes stale duplicates (or removes it when the agent id
+   is unset).
 
 Resulting variables: `AGENT_PERSONAS`, `MODEL_HOST_PROVIDER`, `MODEL_HOST_API_KEY`,
 `PAPERCLIP_AGENT_ID`, `PAPERCLIP_AGENT_API_KEY`, `GITHUB_TOKEN`. Your own prompts, skills and tool

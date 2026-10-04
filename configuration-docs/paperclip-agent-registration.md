@@ -17,7 +17,7 @@ have to set up, and they have to agree. This page covers the Paperclip side.
 The instance's work-pull job runs `paperclipai agent inbox-mine --user-id <paperclip.agent_id>`. If
 that id does not correspond to a registered agent, the poll returns nothing and the instance sits
 idle — it does not error in a way that is obvious from the outside. If `paperclip.agent_id` is left
-empty the container says so in its log at startup and skips registering the poll job entirely.
+empty the container says so in its log at startup and removes any earlier poll job.
 
 ## Registering
 
@@ -83,8 +83,9 @@ Registration and container startup are independent, so either order works:
 3. Fill in `paperclip.agent_id` and `paperclip.api_key_ref`, add the key to your `.env` or secret
    store, and restart the container.
 
-On restart the bootstrap registers the Hermes cron job that pulls work. It logs the schedule it
-registered, and guards against creating a duplicate job if one already exists.
+On restart the bootstrap reconciles the Hermes cron job that pulls work. It creates a missing job,
+updates the schedule or agent id when changed, and removes stale duplicates. Clearing the agent id
+removes the poll job.
 
 ## Checking it worked
 

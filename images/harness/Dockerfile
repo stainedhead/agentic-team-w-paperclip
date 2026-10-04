@@ -28,7 +28,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Keep the directive below as the LAST comment line before the RUN — hadolint ignores it otherwise.
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git tar libatomic1 \
+      ca-certificates curl git jq tar libatomic1 \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
          -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -71,7 +71,7 @@ RUN curl -fsSL https://omp.sh/install | sh
 RUN curl -fsSL https://opencode.ai/install | bash
 
 WORKDIR /opt/agentic-team
-COPY instance.default.yaml harness-bootstrap.sh entrypoint.sh ./
+COPY instance.default.yaml harness-bootstrap.sh poll-job.sh entrypoint.sh ./
 RUN chmod +x harness-bootstrap.sh entrypoint.sh
 
 # Run as a non-root user at runtime (UID/GID 1000:1000, this project's convention — ADR-0002). The

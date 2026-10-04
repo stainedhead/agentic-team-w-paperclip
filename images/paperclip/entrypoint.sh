@@ -15,21 +15,17 @@ source /opt/agentic-team/harness-bootstrap.sh
 
 # Verified 2026-09-27 against Paperclip's own README/doc/DOCKER.md (raw source, not a summarizer):
 # the CLI is invoked as `npx paperclipai <verb>`, not a bare `paperclip` command, and there is no
-# `paperclip serve` — first run does `onboard --yes` (installs/initializes/starts), subsequent
-# runs do `run`. PAPERCLIP_HOME is its persistent data dir; point it at our own /data volume so
+# `paperclip serve` — an instance without config does `onboard --yes` (initializes/starts), while a
+# configured instance does `run`. PAPERCLIP_HOME is its persistent data dir; point it at /data so
 # Paperclip's state persists the same way instance.yaml does, rather than a separate untracked
 # directory. Postgres is embedded by default (no DATABASE_URL needed to boot).
 export HOST="${HOST:-0.0.0.0}"
 export PAPERCLIP_HOME="${PAPERCLIP_HOME:-/data/paperclip}"
 mkdir -p "${PAPERCLIP_HOME}"
 
-# Decide onboard-vs-run BEFORE writing anything into PAPERCLIP_HOME below (including the
-# persisted secrets below) — otherwise this directory would never look "empty" on first boot and
-# 'run' would always be chosen instead of 'onboard', breaking first-run initialization entirely.
-NEEDS_ONBOARD=0
-if [ -z "$(ls -A "${PAPERCLIP_HOME}" 2>/dev/null)" ]; then
-  NEEDS_ONBOARD=1
-fi
+# shellcheck source=start-mode.sh
+source /opt/agentic-team/paperclip-start-mode.sh
+PAPERCLIP_START_MODE="$(paperclip_start_mode "${PAPERCLIP_HOME}" "${PAPERCLIP_INSTANCE_ID:-default}")"
 
 # BETTER_AUTH_SECRET and PAPERCLIP_TOOL_ACTION_SIGNING_SECRET are required just to boot, and must
 # stay stable across restarts (they sign sessions/tokens) — so generate them once on first start
@@ -77,7 +73,7 @@ if ! command -v npx >/dev/null 2>&1; then
 fi
 
 # --- start both processes ---------------------------------------------------------------------
-if [ "${NEEDS_ONBOARD}" -eq 1 ]; then
+if [ "${PAPERCLIP_START_MODE}" = "onboard" ]; then
   echo "[entrypoint] first start for ${PAPERCLIP_HOME} — running 'paperclipai onboard'"
   npx paperclipai onboard --yes &
 else
