@@ -74,9 +74,15 @@ jobs:
         run: |
           shellcheck -x --source-path=SCRIPTDIR \
                      images/harness/harness-bootstrap.sh \
+                     images/harness/poll-job.sh \
                      images/harness/entrypoint.sh \
+                     images/paperclip/start-mode.sh \
                      images/paperclip/entrypoint.sh \
-                     templates/macos-container/run-instance.sh
+                     templates/macos-container/run-instance.sh \
+                     tests/startup_test.sh
+
+      - name: Test startup helpers
+        run: bash tests/startup_test.sh
 
       - name: Hadolint harness Dockerfile
         uses: hadolint/hadolint-action@v3.5.0
@@ -148,7 +154,7 @@ jobs:
             set -euo pipefail
             echo "arch=$(uname -m) whoami=$(whoami) uid=$(id -u) HOME=${HOME}"
             [ "$(id -u)" = "1000" ] || { echo "FAIL: image is not running as uid 1000"; exit 1; }
-            for tool in hermes omp opencode yq gh git; do
+            for tool in hermes omp opencode yq jq gh git; do
               if command -v "${tool}" >/dev/null 2>&1; then
                 echo "ok: ${tool} -> $(command -v "${tool}")"
               else

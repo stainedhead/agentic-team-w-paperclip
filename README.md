@@ -212,8 +212,8 @@ What `smoke-build` **does not** cover:
   `configuration-docs/deploy-*.md` says what to set.
 - **The entrypoints themselves.** It sources the bootstrap rather than running the entrypoint, which
   would block on the Hermes gateway. So `hermes gateway run --foreground` as the container's main
-  process remains the main unverified runtime assumption, along with `hermes cron create`'s own
-  de-duplication behavior (the bootstrap guards against duplicates itself rather than relying on it).
+  process remains the main unverified runtime assumption. The bootstrap reconciles the Paperclip
+  poll job through Hermes's cron CLI rather than relying on `cron create` to de-duplicate it.
 - **`linux/arm64` runtime behavior is now covered** — `smoke-build` runs as a per-architecture matrix
   on native runners, so the arm64 images are built and executed rather than assumed. Apple Silicon
   lab machines and AWS Graviton both use arm64, so this is the local-development path, not an edge

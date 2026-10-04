@@ -9,7 +9,7 @@
 #      `*_ref` fields dereferenced against this container's own environment, scalars exported
 #      directly. See documentation/architectual-decisions-record.md ADR-0011 for why this project
 #      does not write into Hermes's/OMP's/OpenCode's native config schemas.
-#   3. Register the Paperclip work-poll cron job with Hermes, idempotently.
+#   3. Reconcile the Paperclip work-poll cron job with Hermes on every start.
 #
 # Field reference: user-docs/configuration-reference.md
 # Credential resolution: configuration-docs/credentials-and-secrets.md
@@ -117,24 +117,10 @@ true   # keep the conditional exports above from deciding this script's exit sta
 # --- 3. Paperclip work-poll cron job ----------------------------------------------------------
 POLL_CRON="${PAPERCLIP_POLL_SCHEDULE:-}"
 [ -n "${POLL_CRON}" ] || POLL_CRON="${DEFAULT_POLL_CRON}"
-POLL_COMMAND="paperclipai agent inbox-mine --user-id ${PAPERCLIP_AGENT_ID} --status todo,in_progress"
 CRON_JOBS_FILE="${HERMES_HOME}/cron/jobs.json"
 
-# This runs on every container start, not just the first. Whether `hermes cron create` itself
-# dedupes an identical schedule+command is unconfirmed upstream, so guard explicitly by checking
-# the jobs file for the exact command — that keeps restarts from accumulating duplicate poll jobs
-# regardless of Hermes's own behavior.
-if [ -n "${PAPERCLIP_AGENT_ID}" ]; then
-  if [ -f "${CRON_JOBS_FILE}" ] && grep -qF "${POLL_COMMAND}" "${CRON_JOBS_FILE}"; then
-    echo "[bootstrap] Paperclip poll job already registered — not creating a duplicate"
-  else
-    echo "[bootstrap] registering Paperclip poll job on schedule '${POLL_CRON}'"
-    hermes cron create "${POLL_CRON}" "${POLL_COMMAND}" \
-      || echo "[bootstrap] WARNING: 'hermes cron create' failed — this instance will not pull work" \
-              "until the job is registered; continuing so the container still starts" >&2
-  fi
-else
-  echo "[bootstrap] paperclip.agent_id is unset in ${INSTANCE_CONFIG} — skipping poll-job" \
-       "registration. This instance will not receive work until it is set and the container" \
-       "restarted (see configuration-docs/paperclip-agent-registration.md)."
-fi
+# shellcheck source=poll-job.sh
+source /opt/agentic-team/poll-job.sh
+reconcile_paperclip_poll_job "${CRON_JOBS_FILE}" "${POLL_CRON}" "${PAPERCLIP_AGENT_ID}" \
+  || echo "[bootstrap] WARNING: Paperclip poll job could not be reconciled; check Hermes cron" \
+          "before relying on this instance to pull work" >&2

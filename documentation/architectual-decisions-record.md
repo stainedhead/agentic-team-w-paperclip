@@ -236,6 +236,21 @@ a past entry in place.
   **There is still exactly one Dockerfile per image**; splitting the containerization per architecture
   was rejected, since it would duplicate every maintenance change and defeat ADR-0006.
 
+## ADR-0017: Reconcile the Paperclip cron job and detect completed onboarding by its config
+- **Status**: Accepted (2026-10-04)
+- **Context**: The bootstrap checked only the poll command in `jobs.json`, so editing
+  `paperclip.poll_schedule` left the old schedule in place and changing the agent id left an old
+  job running. The Paperclip entrypoint treated any file in its home as completed onboarding, even
+  though it creates `.secrets` before invoking `onboard`.
+- **Decision**: Identify the managed poll jobs from their exact command shape in Hermes's cron
+  store, and use `hermes cron create`, `edit` and `remove` to leave one job with the configured
+  schedule and agent id. An unset id removes managed jobs. Choose Paperclip's `run` path only when
+  the selected instance's `config.json` exists; otherwise retry `onboard --yes`.
+- **Consequences**: Restart applies schedule and agent-id changes without accumulating old jobs.
+  A failed first boot can retry onboarding. The harness image includes `jq` to read Hermes's JSON
+  store; mutations remain with Hermes's CLI. If the store is unreadable, the bootstrap warns and
+  leaves jobs untouched rather than risking a duplicate.
+
 ## Open (not decided)
 - **Full local networking/service-discovery/identity-store design** equivalent to the AWS
   architecture in sections 1-6 — narrowed out of scope for this product (the swarm owner's concern
